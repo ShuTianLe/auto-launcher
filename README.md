@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="logo_android_auto_task_cute_clean.svg" width="168" alt="Auto Launcher Logo" />
+</p>
+
 # Auto Launcher
 
 `Auto Launcher` 是一个 Android 定时任务应用，用来在指定时间自动亮屏、打开目标应用、停留一段时间，再回到 `Auto Launcher` 并锁屏。
 
-目前已经支持：
+目前支持：
 
 - 多任务管理
 - 24 小时制触发时间
@@ -14,8 +18,8 @@
 
 ## 下载
 
-- 当前版本：[`v1.0.5`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.0.5)
-- 安装包：[`AutoLauncher-v1.0.5.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.0.5/AutoLauncher-v1.0.5.apk)
+- 当前版本：[`v1.0.0`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.0.0)
+- 安装包：[`AutoLauncher-v1.0.0.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.0.0/AutoLauncher-v1.0.0.apk)
 - 历史版本：[`Releases`](https://github.com/ShuTianLe/auto-launcher/releases)
 
 ## 功能
@@ -95,14 +99,3 @@
 ```bash
 ./gradlew assembleRelease
 ```
-
-## 自动构建
-
-仓库内包含 GitHub Actions 工作流，后续可以通过 tag 或 release 自动构建 APK。
-
-如需产出签名 release 包，需要在 GitHub Actions 里配置以下 secrets：
-
-- `SIGNING_KEYSTORE_BASE64`
-- `SIGNING_STORE_PASSWORD`
-- `SIGNING_KEY_ALIAS`
-- `SIGNING_KEY_PASSWORD`
