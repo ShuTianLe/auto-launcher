@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="softShadow" x="180" y="180" width="664" height="664" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#000000" flood-opacity="0.10"/>
+    </filter>
+    <filter id="miniShadow" x="564" y="268" width="220" height="220" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <rect x="152" y="152" width="720" height="720" rx="180" fill="#6C8CFF"/>
+  <g filter="url(#softShadow)">
+    <circle cx="512" cy="548" r="188" fill="#FFFFFF"/>
+    <circle cx="402" cy="372" r="48" fill="#FFFFFF"/>
+    <circle cx="622" cy="372" r="48" fill="#FFFFFF"/>
+    <ellipse cx="432" cy="742" rx="28" ry="18" fill="#FFFFFF"/>
+    <ellipse cx="592" cy="742" rx="28" ry="18" fill="#FFFFFF"/>
+  </g>
+  <circle cx="512" cy="548" r="152" fill="#EEF3FF"/>
+  <rect x="502" y="420" width="20" height="42" rx="10" fill="#6C8CFF"/>
+  <rect x="502" y="634" width="20" height="42" rx="10" fill="#6C8CFF"/>
+  <rect x="634" y="538" width="42" height="20" rx="10" fill="#6C8CFF"/>
+  <rect x="348" y="538" width="42" height="20" rx="10" fill="#6C8CFF"/>
+  <circle cx="458" cy="520" r="12" fill="#6C8CFF"/>
+  <circle cx="566" cy="520" r="12" fill="#6C8CFF"/>
+  <path d="M462 592C476 612 491 622 512 622C533 622 548 612 562 592" stroke="#6C8CFF" stroke-width="20" stroke-linecap="round"/>
+  <path d="M512 548V482" stroke="#6C8CFF" stroke-width="28" stroke-linecap="round"/>
+  <path d="M512 548L572 582" stroke="#6C8CFF" stroke-width="28" stroke-linecap="round"/>
+  <g filter="url(#miniShadow)">
+    <rect x="614" y="302" width="124" height="124" rx="34" fill="#FFFFFF"/>
+    <path d="M652 388L696 344" stroke="#6C8CFF" stroke-width="22" stroke-linecap="round"/>
+    <path d="M669 344H696V371" stroke="#6C8CFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <circle cx="340" cy="436" r="10" fill="#DCE5FF"/>
+  <circle cx="708" cy="516" r="8" fill="#DCE5FF"/>
+  <circle cx="662" cy="714" r="10" fill="#DCE5FF"/>
+</svg>
