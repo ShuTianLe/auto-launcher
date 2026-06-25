@@ -9,6 +9,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -57,6 +59,33 @@ interface TaskDao {
 }
 
 @Dao
+interface TaskSkipDateDao {
+    @Query("SELECT * FROM task_skip_dates WHERE taskId = :taskId ORDER BY date ASC")
+    fun observeByTaskId(taskId: Long): Flow<List<TaskSkipDateEntity>>
+
+    @Query("SELECT * FROM task_skip_dates WHERE date >= :startDate ORDER BY date ASC, taskId ASC")
+    fun observeFromDate(startDate: String): Flow<List<TaskSkipDateEntity>>
+
+    @Query("SELECT date FROM task_skip_dates WHERE taskId = :taskId ORDER BY date ASC")
+    suspend fun getDatesByTaskId(taskId: Long): List<String>
+
+    @Query("SELECT COUNT(*) FROM task_skip_dates WHERE taskId = :taskId AND date = :date")
+    suspend fun countByTaskAndDate(taskId: Long, date: String): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(skipDate: TaskSkipDateEntity)
+
+    @Query("DELETE FROM task_skip_dates WHERE taskId = :taskId AND date = :date")
+    suspend fun delete(taskId: Long, date: String)
+
+    @Query("DELETE FROM task_skip_dates WHERE taskId = :taskId")
+    suspend fun deleteByTaskId(taskId: Long)
+
+    @Query("DELETE FROM task_skip_dates WHERE date < :beforeDate")
+    suspend fun prunePastDates(beforeDate: String)
+}
+
+@Dao
 interface LogDao {
     @Query("SELECT * FROM execution_logs ORDER BY createdAtMillis DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<ExecutionLogEntity>>
@@ -83,23 +112,43 @@ interface HolidayDao {
 }
 
 @Database(
-    entities = [TaskEntity::class, ExecutionLogEntity::class, HolidayEntryEntity::class],
-    version = 1,
+    entities = [TaskEntity::class, TaskSkipDateEntity::class, ExecutionLogEntity::class, HolidayEntryEntity::class],
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(RoomConverters::class)
 abstract class AutoLauncherDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
+    abstract fun taskSkipDateDao(): TaskSkipDateDao
     abstract fun logDao(): LogDao
     abstract fun holidayDao(): HolidayDao
 
     companion object {
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `task_skip_dates` (
+                        `taskId` INTEGER NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `createdAtMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`taskId`, `date`),
+                        FOREIGN KEY(`taskId`) REFERENCES `tasks`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_skip_dates_taskId` ON `task_skip_dates` (`taskId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_skip_dates_date` ON `task_skip_dates` (`date`)")
+            }
+        }
+
         fun build(context: Context): AutoLauncherDatabase {
             return Room.databaseBuilder(
                 context,
                 AutoLauncherDatabase::class.java,
                 "auto_launcher.db",
-            ).build()
+            ).addMigrations(MIGRATION_1_2).build()
         }
     }
 }

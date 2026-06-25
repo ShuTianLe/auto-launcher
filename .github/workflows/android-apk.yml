@@ -6,14 +6,16 @@ permissions:
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
-  release:
-    types: [published]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
 
     steps:
       - name: Checkout
@@ -31,17 +33,42 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
+      - name: Resolve release version
+        id: release_version
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION_NAME="$(grep -m1 'versionName = ' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "tag=v${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          if printf '%s' "$COMMIT_MESSAGE" | grep -Fq '[release]'; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Decode signing keystore
-        if: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_SIGNING_KEYSTORE == 'true' }}
         run: |
           echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > signing-keystore.jks
 
+      - name: Require signing keystore for release tags
+        if: ${{ steps.release_version.outputs.should_release == 'true' && env.HAS_SIGNING_KEYSTORE != 'true' }}
+        run: |
+          echo "Signing secrets are required when publishing a release."
+          exit 1
+
       - name: Build release APK
-        if: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_SIGNING_KEYSTORE == 'true' }}
         run: ./gradlew assembleRelease --stacktrace --console=plain
 
       - name: Sign release APK
-        if: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_SIGNING_KEYSTORE == 'true' }}
         run: |
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/zipalign" -p -f 4 \
             app/build/outputs/apk/release/app-release-unsigned.apk \
@@ -54,11 +81,11 @@ jobs:
             --v1-signing-enabled false \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
-            --out AutoLauncher-release.apk \
+            --out AutoLauncher-${{ steps.release_version.outputs.tag }}.apk \
             app/build/outputs/apk/release/app-release-aligned.apk
 
       - name: Build debug APK
-        if: ${{ secrets.SIGNING_KEYSTORE_BASE64 == '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.HAS_SIGNING_KEYSTORE != 'true' }}
         run: |
           ./gradlew assembleDebug --stacktrace --console=plain
           cp app/build/outputs/apk/debug/app-debug.apk AutoLauncher-debug.apk
@@ -68,14 +95,26 @@ jobs:
         with:
           name: auto-launcher-apk
           path: |
-            AutoLauncher-release.apk
+            AutoLauncher-v*.apk
             AutoLauncher-debug.apk
           if-no-files-found: ignore
 
+      - name: Prepare release notes
+        if: ${{ steps.release_version.outputs.should_release == 'true' }}
+        run: |
+          NOTES="release-notes/${{ steps.release_version.outputs.tag }}.md"
+          if [ -f "$NOTES" ]; then
+            cp "$NOTES" RELEASE_NOTES.md
+          else
+            printf '# Auto Launcher %s\n\nSee CHANGELOG.md for details.\n' "${{ steps.release_version.outputs.tag }}" > RELEASE_NOTES.md
+          fi
+
       - name: Upload APK to GitHub Release
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ steps.release_version.outputs.should_release == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            AutoLauncher-release.apk
-            AutoLauncher-debug.apk
+          body_path: RELEASE_NOTES.md
+          fail_on_unmatched_files: true
+          tag_name: ${{ steps.release_version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: AutoLauncher-${{ steps.release_version.outputs.tag }}.apk

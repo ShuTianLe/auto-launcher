@@ -16,6 +16,7 @@ import com.stl.autolauncher.AutoLauncherApp
 import com.stl.autolauncher.data.ExecutionStatus
 import com.stl.autolauncher.data.TaskEntity
 import com.stl.autolauncher.receiver.AutoLauncherDeviceAdminReceiver
+import com.stl.autolauncher.scheduling.ScheduleCalculator
 import com.stl.autolauncher.ui.MainActivity
 import com.stl.autolauncher.ui.WakeActivity
 import kotlinx.coroutines.CoroutineScope
@@ -69,9 +70,25 @@ class TaskExecutionService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification("执行计划任务中"))
         while (true) {
             val task = container.taskRepository.getDueTasks(System.currentTimeMillis()).firstOrNull() ?: break
-            executeTask(task)
+            if (!skipDueTaskIfNeeded(task)) {
+                executeTask(task)
+            }
             container.taskScheduler.onTaskCompleted(task.id)
         }
+    }
+
+    private suspend fun skipDueTaskIfNeeded(task: TaskEntity): Boolean {
+        val triggerAtMillis = task.nextTriggerAtMillis ?: System.currentTimeMillis()
+        val triggerDate = ScheduleCalculator.actualDateFor(triggerAtMillis, ZoneId.systemDefault())
+        if (!container.taskRepository.hasSkipDate(task.id, triggerDate)) return false
+
+        container.taskRepository.appendLog(
+            task.id,
+            task.name,
+            ExecutionStatus.SKIPPED,
+            "已按一次性跳过日期 ${triggerDate} 跳过本次任务",
+        )
+        return true
     }
 
     private suspend fun executeTask(task: TaskEntity) {

@@ -20,11 +20,18 @@ import javax.net.ssl.SSLException
 
 class TaskRepository(
     private val taskDao: TaskDao,
+    private val taskSkipDateDao: TaskSkipDateDao,
     private val logDao: LogDao,
 ) {
     fun observeTasks(): Flow<List<TaskEntity>> = taskDao.observeAll()
 
     fun observeTask(taskId: Long): Flow<TaskEntity?> = taskDao.observeById(taskId)
+
+    fun observeTaskSkipDates(taskId: Long): Flow<List<TaskSkipDateEntity>> = taskSkipDateDao.observeByTaskId(taskId)
+
+    fun observeFutureSkipDates(startDate: LocalDate): Flow<List<TaskSkipDateEntity>> {
+        return taskSkipDateDao.observeFromDate(startDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+    }
 
     fun observeLogs(limit: Int = 200): Flow<List<ExecutionLogEntity>> = logDao.observeRecent(limit)
 
@@ -33,6 +40,16 @@ class TaskRepository(
     suspend fun getAllTasks(): List<TaskEntity> = taskDao.getAll()
 
     suspend fun getDueTasks(nowMillis: Long): List<TaskEntity> = taskDao.getDueTasks(nowMillis)
+
+    suspend fun getSkipDates(taskId: Long): Set<LocalDate> {
+        return taskSkipDateDao.getDatesByTaskId(taskId)
+            .mapNotNull { value -> runCatching { LocalDate.parse(value) }.getOrNull() }
+            .toSet()
+    }
+
+    suspend fun hasSkipDate(taskId: Long, date: LocalDate): Boolean {
+        return taskSkipDateDao.countByTaskAndDate(taskId, date.format(DateTimeFormatter.ISO_LOCAL_DATE)) > 0
+    }
 
     suspend fun saveTask(task: TaskEntity): Long {
         val now = System.currentTimeMillis()
@@ -59,7 +76,25 @@ class TaskRepository(
     }
 
     suspend fun deleteTask(taskId: Long) {
+        taskSkipDateDao.deleteByTaskId(taskId)
         taskDao.deleteById(taskId)
+    }
+
+    suspend fun addSkipDate(taskId: Long, date: LocalDate) {
+        taskSkipDateDao.upsert(
+            TaskSkipDateEntity(
+                taskId = taskId,
+                date = date.format(DateTimeFormatter.ISO_LOCAL_DATE),
+            ),
+        )
+    }
+
+    suspend fun deleteSkipDate(taskId: Long, date: LocalDate) {
+        taskSkipDateDao.delete(taskId, date.format(DateTimeFormatter.ISO_LOCAL_DATE))
+    }
+
+    suspend fun prunePastSkipDates(today: LocalDate) {
+        taskSkipDateDao.prunePastDates(today.format(DateTimeFormatter.ISO_LOCAL_DATE))
     }
 
     suspend fun appendLog(taskId: Long?, taskName: String, status: ExecutionStatus, detail: String) {

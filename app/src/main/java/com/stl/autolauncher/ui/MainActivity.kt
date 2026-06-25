@@ -1,6 +1,7 @@
 package com.stl.autolauncher.ui
 
 import android.app.Activity
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.app.admin.DevicePolicyManager
 import android.content.Intent
@@ -35,6 +36,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Done
@@ -46,9 +48,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.EventBusy
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.AlertDialog
@@ -109,11 +112,19 @@ import com.stl.autolauncher.data.InstalledApp
 import com.stl.autolauncher.data.PermissionSnapshot
 import com.stl.autolauncher.data.RepeatRule
 import com.stl.autolauncher.data.TaskEntity
+import com.stl.autolauncher.data.TaskSkipDateEntity
 import com.stl.autolauncher.receiver.AutoLauncherDeviceAdminReceiver
+import com.stl.autolauncher.scheduling.ScheduleCalculator
+import com.stl.autolauncher.scheduling.SchedulePreviewDay
+import com.stl.autolauncher.scheduling.SchedulePreviewStatus
+import com.stl.autolauncher.scheduling.ScheduleWindow
 import com.stl.autolauncher.scheduling.HolidaySyncWorker
 import com.stl.autolauncher.ui.theme.AutoLauncherTheme
 import com.stl.autolauncher.util.formatNextTrigger
 import com.stl.autolauncher.util.repeatSummary
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -126,6 +137,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -158,6 +171,7 @@ data class HolidaySyncUiState(
     val isRunning: Boolean get() = status == HolidaySyncStatus.RUNNING
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(
     application: AutoLauncherApp,
     private val container: AppContainer,
@@ -165,6 +179,11 @@ class MainViewModel(
     val tasks = container.taskRepository.observeTasks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val logs = container.taskRepository.observeLogs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _today = MutableStateFlow(LocalDate.now())
+    val futureSkipDates = _today
+        .flatMapLatest { today -> container.taskRepository.observeFutureSkipDates(today) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
@@ -182,9 +201,16 @@ class MainViewModel(
     init {
         refreshInstalledApps()
         refreshPermissions()
+        prunePastSkipDates()
     }
 
     fun observeTask(taskId: Long) = container.taskRepository.observeTask(taskId)
+
+    fun observeTaskSkipDates(taskId: Long) = container.taskRepository.observeTaskSkipDates(taskId)
+
+    fun refreshCurrentDate() {
+        _today.value = LocalDate.now()
+    }
 
     fun refreshInstalledApps() {
         viewModelScope.launch {
@@ -220,6 +246,46 @@ class MainViewModel(
             container.taskRepository.setEnabled(taskId, enabled)
             container.taskScheduler.reconcileTask(taskId)
         }
+    }
+
+    fun addSkipDate(taskId: Long, date: LocalDate) {
+        viewModelScope.launch {
+            val today = LocalDate.now()
+            if (date.isBefore(today)) {
+                _syncMessages.tryEmit("不能添加过去日期")
+                return@launch
+            }
+            container.taskRepository.addSkipDate(taskId, date)
+            container.taskRepository.prunePastSkipDates(today)
+            container.taskScheduler.reconcileTask(taskId)
+            refreshCurrentDate()
+            _syncMessages.tryEmit("已添加跳过日期 ${date.format(skipDateMessageFormatter)}")
+        }
+    }
+
+    fun deleteSkipDate(taskId: Long, date: LocalDate) {
+        viewModelScope.launch {
+            container.taskRepository.deleteSkipDate(taskId, date)
+            container.taskScheduler.reconcileTask(taskId)
+            refreshCurrentDate()
+            _syncMessages.tryEmit("已删除跳过日期 ${date.format(skipDateMessageFormatter)}")
+        }
+    }
+
+    fun prunePastSkipDates() {
+        viewModelScope.launch {
+            container.taskRepository.prunePastSkipDates(LocalDate.now())
+            refreshCurrentDate()
+        }
+    }
+
+    suspend fun buildSevenDayPreview(task: TaskEntity, skipDates: Set<LocalDate>): List<SchedulePreviewDay> {
+        return ScheduleCalculator.buildSevenDayPreview(
+            task = task,
+            startDate = LocalDate.now(),
+            skipDates = skipDates,
+            workdayResolver = { date -> container.holidayRepository.isChineseWorkday(date) },
+        )
     }
 
     fun refreshHolidayCalendar() {
@@ -309,6 +375,9 @@ private sealed class Screen(val route: String) {
     data object Edit : Screen("edit?taskId={taskId}") {
         fun create(taskId: Long? = null): String = taskId?.let { "edit?taskId=$it" } ?: "edit"
     }
+    data object Schedule : Screen("schedule/{taskId}") {
+        fun create(taskId: Long): String = "schedule/$taskId"
+    }
 }
 
 @Composable
@@ -330,7 +399,7 @@ private fun AutoLauncherRoot(viewModel: MainViewModel, activity: Activity) {
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
-            if (!currentRoute.startsWith("edit")) {
+            if (!currentRoute.startsWith("edit") && !currentRoute.startsWith("schedule")) {
                 NavigationBar {
                     val tabs = listOf(Screen.Tasks, Screen.Logs, Screen.Permissions)
                     tabs.forEach { screen ->
@@ -352,6 +421,7 @@ private fun AutoLauncherRoot(viewModel: MainViewModel, activity: Activity) {
                                         Screen.Logs -> Icons.Default.Info
                                         Screen.Permissions -> Icons.Default.Settings
                                         Screen.Edit -> Icons.Default.Add
+                                        Screen.Schedule -> Icons.Outlined.CalendarMonth
                                     },
                                     contentDescription = null,
                                 )
@@ -363,6 +433,7 @@ private fun AutoLauncherRoot(viewModel: MainViewModel, activity: Activity) {
                                         Screen.Logs -> "日志"
                                         Screen.Permissions -> "权限"
                                         Screen.Edit -> "编辑"
+                                        Screen.Schedule -> "时间表"
                                     },
                                 )
                             },
@@ -389,6 +460,7 @@ private fun AutoLauncherRoot(viewModel: MainViewModel, activity: Activity) {
                     viewModel = viewModel,
                     permissions = permissions,
                     onEdit = { navController.navigate(Screen.Edit.create(it)) },
+                    onOpenSchedule = { navController.navigate(Screen.Schedule.create(it)) },
                     onOpenPermissions = { navController.navigate(Screen.Permissions.route) },
                 )
             }
@@ -415,6 +487,17 @@ private fun AutoLauncherRoot(viewModel: MainViewModel, activity: Activity) {
             ) { entry ->
                 val taskId = entry.arguments?.getLong("taskId")?.takeIf { it > 0 }
                 TaskEditorScreen(viewModel = viewModel, taskId = taskId, onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Screen.Schedule.route,
+                arguments = listOf(
+                    navArgument("taskId") {
+                        type = NavType.LongType
+                    },
+                ),
+            ) { entry ->
+                val taskId = entry.arguments?.getLong("taskId") ?: return@composable
+                TaskScheduleScreen(viewModel = viewModel, taskId = taskId, onBack = { navController.popBackStack() })
             }
         }
     }
@@ -445,11 +528,25 @@ private fun TaskListScreen(
     viewModel: MainViewModel,
     permissions: PermissionSnapshot,
     onEdit: (Long) -> Unit,
+    onOpenSchedule: (Long) -> Unit,
     onOpenPermissions: () -> Unit,
 ) {
     val tasks by viewModel.tasks.collectAsState()
+    val futureSkipDates by viewModel.futureSkipDates.collectAsState()
+    val skipDatesByTask = remember(futureSkipDates) {
+        futureSkipDates
+            .groupBy { it.taskId }
+            .mapValues { (_, dates) -> dates.map(TaskSkipDateEntity::localDate).sorted() }
+    }
     val issues = criticalPermissionIssues(permissions)
     val needsHolidaySync = tasks.any { it.enabled && it.repeatRule == RepeatRule.WORKDAY_CN && it.nextTriggerAtMillis == null }
+
+    LaunchedEffect(viewModel) {
+        while (true) {
+            viewModel.refreshCurrentDate()
+            delay(60_000)
+        }
+    }
 
     ScreenBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -488,6 +585,8 @@ private fun TaskListScreen(
                 items(tasks, key = { it.id }) { task ->
                     TaskCard(
                         task = task,
+                        futureSkipDates = skipDatesByTask[task.id].orEmpty(),
+                        onOpenSchedule = { onOpenSchedule(task.id) },
                         onEdit = { onEdit(task.id) },
                         onDelete = { viewModel.deleteTask(task.id) },
                         onEnabledChanged = { viewModel.setTaskEnabled(task.id, it) },
@@ -501,6 +600,8 @@ private fun TaskListScreen(
 @Composable
 private fun TaskCard(
     task: TaskEntity,
+    futureSkipDates: List<LocalDate>,
+    onOpenSchedule: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onEnabledChanged: (Boolean) -> Unit,
@@ -531,12 +632,80 @@ private fun TaskCard(
                 value = formatClock(task.hour, task.minute) + " · 随机 " + task.randomWindowMinutes + " 分钟 · 停留 " + task.waitDurationSeconds + " 秒",
             )
 
+            if (futureSkipDates.isNotEmpty()) {
+                SkipDateReminderRow(dates = futureSkipDates)
+            }
+
+            Button(onClick = onOpenSchedule, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("时间表与跳过日期")
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
                     Text("编辑")
                 }
                 OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
                     Text("删除")
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SkipDateReminderRow(dates: List<LocalDate>) {
+    val visibleDates = dates.take(4)
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f),
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.EventBusy, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("将跳过以下日期", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                visibleDates.forEach { date ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        shape = RoundedCornerShape(999.dp),
+                    ) {
+                        Text(
+                            text = date.format(skipDateChipFormatter),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+                if (dates.size > visibleDates.size) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        shape = RoundedCornerShape(999.dp),
+                    ) {
+                        Text(
+                            text = "+${dates.size - visibleDates.size}",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         }
@@ -849,6 +1018,234 @@ private fun TaskEditorScreen(viewModel: MainViewModel, taskId: Long?, onBack: ()
                 }
             },
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun TaskScheduleScreen(viewModel: MainViewModel, taskId: Long, onBack: () -> Unit) {
+    val taskFlow = remember(taskId) { viewModel.observeTask(taskId) }
+    val task by taskFlow.collectAsState(initial = null)
+    val skipDateFlow = remember(taskId) { viewModel.observeTaskSkipDates(taskId) }
+    val skipDateEntities by skipDateFlow.collectAsState(initial = emptyList())
+    var today by remember { mutableStateOf(LocalDate.now()) }
+    var previewDays by remember { mutableStateOf<List<SchedulePreviewDay>?>(null) }
+    var previewLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val zoneId = remember { ZoneId.systemDefault() }
+
+    val skipDates = remember(skipDateEntities) {
+        skipDateEntities.map(TaskSkipDateEntity::localDate).sorted()
+    }
+    val futureSkipDates = remember(skipDates, today) {
+        skipDates.filterNot { it.isBefore(today) }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.prunePastSkipDates()
+        while (true) {
+            today = LocalDate.now()
+            viewModel.refreshCurrentDate()
+            delay(60_000)
+        }
+    }
+
+    LaunchedEffect(task, skipDates) {
+        val currentTask = task
+        if (currentTask == null) {
+            previewDays = null
+            return@LaunchedEffect
+        }
+        previewLoading = true
+        previewDays = runCatching {
+            viewModel.buildSevenDayPreview(currentTask, skipDates.toSet())
+        }.getOrDefault(emptyList())
+        previewLoading = false
+    }
+
+    val showSkipDatePicker = {
+        val baseDate = LocalDate.now()
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                viewModel.addSkipDate(taskId, LocalDate.of(year, month + 1, dayOfMonth))
+            },
+            baseDate.year,
+            baseDate.monthValue - 1,
+            baseDate.dayOfMonth,
+        ).apply {
+            datePicker.minDate = baseDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        }.show()
+    }
+
+    ScreenBackground {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text("任务时间表") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        }
+                    },
+                )
+            },
+        ) { innerPadding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                val currentTask = task
+                if (currentTask == null) {
+                    item {
+                        EmptyStateCard(
+                            title = "任务不存在",
+                            description = "这个任务可能已经被删除，请返回任务列表重新选择。",
+                        )
+                    }
+                } else {
+                    item {
+                        SectionCard(title = "任务摘要") {
+                            Text(currentTask.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            TaskMetaRow(icon = Icons.Default.Schedule, label = "下次触发", value = taskTriggerSummary(currentTask))
+                            TaskMetaRow(
+                                icon = Icons.Outlined.CalendarMonth,
+                                label = "执行窗口",
+                                value = formatClock(currentTask.hour, currentTask.minute) + scheduleWindowSuffix(currentTask.randomWindowMinutes),
+                            )
+                            TaskMetaRow(icon = Icons.Default.PhoneAndroid, label = "目标应用", value = currentTask.targetAppLabel)
+                        }
+                    }
+                    item {
+                        SectionCard(title = "跳过日期", subtitle = "一次性日期，可添加多个。") {
+                            Button(onClick = showSkipDatePicker, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("添加跳过日期")
+                            }
+                            if (futureSkipDates.isEmpty()) {
+                                Text(
+                                    "暂无未来跳过日期",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    futureSkipDates.forEach { date ->
+                                        SkipDateChip(
+                                            date = date,
+                                            onDelete = { viewModel.deleteSkipDate(taskId, date) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        SectionCard(title = "未来 7 天", subtitle = "按实际触发日期展示。") {
+                            when {
+                                previewLoading -> Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                }
+                                previewDays.isNullOrEmpty() -> Text(
+                                    "暂无预览",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                else -> previewDays.orEmpty().forEach { day ->
+                                    SchedulePreviewDayRow(day = day)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkipDateChip(date: LocalDate, onDelete: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = RoundedCornerShape(999.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                date.format(skipDateChipFormatter),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SchedulePreviewDayRow(day: SchedulePreviewDay) {
+    val (statusText, containerColor, contentColor) = previewStatusStyle(day.status)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                color = containerColor,
+                contentColor = contentColor,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(
+                    imageVector = if (day.status == SchedulePreviewStatus.SKIPPED) Icons.Outlined.EventBusy else Icons.Default.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.padding(8.dp).size(18.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(day.date.format(fullDateFormatter), fontWeight = FontWeight.SemiBold)
+                Text(
+                    previewDetailText(day),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Surface(
+                color = containerColor,
+                contentColor = contentColor,
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier.widthIn(min = 72.dp),
+            ) {
+                Text(
+                    statusText,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
@@ -1331,6 +1728,67 @@ private fun taskTriggerSummary(task: TaskEntity): String {
     return formatNextTrigger(task.nextTriggerAtMillis)
 }
 
+private fun scheduleWindowSuffix(randomWindowMinutes: Int): String {
+    return if (randomWindowMinutes <= 0) {
+        " · 固定触发"
+    } else {
+        " · 随机 0-$randomWindowMinutes 分钟"
+    }
+}
+
+private fun previewDetailText(day: SchedulePreviewDay): String {
+    val windowText = day.windows.joinToString(" / ") { window -> formatPreviewWindow(window) }
+    return when (day.status) {
+        SchedulePreviewStatus.SCHEDULED -> if (windowText.isBlank()) "将执行" else "可能 $windowText"
+        SchedulePreviewStatus.SKIPPED -> if (windowText.isBlank()) "已跳过" else "已跳过 $windowText"
+        SchedulePreviewStatus.NO_TASK -> "当天不触发"
+        SchedulePreviewStatus.WAITING_HOLIDAY_DATA -> "中国节假日数据待同步"
+        SchedulePreviewStatus.DISABLED -> "任务已停用"
+    }
+}
+
+private fun formatPreviewWindow(window: ScheduleWindow): String {
+    val startText = window.startsAt.format(timeFormatter)
+    if (window.startsAt == window.endsAt) return startText
+    val endText = if (window.endsAt.toLocalDate().isAfter(window.startsAt.toLocalDate())) {
+        "次日 ${window.endsAt.format(timeFormatter)}"
+    } else {
+        window.endsAt.format(timeFormatter)
+    }
+    return "$startText-$endText"
+}
+
+@Composable
+private fun previewStatusStyle(status: SchedulePreviewStatus): Triple<String, Color, Color> {
+    return when (status) {
+        SchedulePreviewStatus.SCHEDULED -> Triple(
+            "将执行",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+        SchedulePreviewStatus.SKIPPED -> Triple(
+            "已跳过",
+            MaterialTheme.colorScheme.tertiaryContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer,
+        )
+        SchedulePreviewStatus.NO_TASK -> Triple(
+            "无任务",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SchedulePreviewStatus.WAITING_HOLIDAY_DATA -> Triple(
+            "待同步",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.onErrorContainer,
+        )
+        SchedulePreviewStatus.DISABLED -> Triple(
+            "已停用",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun logStatusStyle(status: ExecutionStatus): Triple<String, Color, Color> {
     return when (status) {
@@ -1358,6 +1816,11 @@ private fun logStatusStyle(status: ExecutionStatus): Triple<String, Color, Color
 }
 
 private fun formatClock(hour: Int, minute: Int): String = String.format(Locale.SIMPLIFIED_CHINESE, "%02d:%02d", hour, minute)
+
+private val skipDateChipFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd E", Locale.SIMPLIFIED_CHINESE)
+private val skipDateMessageFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd", Locale.SIMPLIFIED_CHINESE)
+private val fullDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd E", Locale.SIMPLIFIED_CHINESE)
+private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.SIMPLIFIED_CHINESE)
 
 private fun dayLabel(day: DayOfWeek): String = when (day.value) {
     1 -> "周一"

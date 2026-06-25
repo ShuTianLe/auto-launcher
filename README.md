@@ -12,14 +12,16 @@
 - 24 小时制触发时间
 - 随机触发窗口
 - 每天 / 中国工作日 / 指定周几
+- 每个任务可设置多个一次性跳过日期
+- 未来 7 天任务时间表预览
 - 中国节假日自动同步
 - 执行日志
 - 权限检查与引导
 
 ## 下载
 
-- 当前版本：[`v1.0.0`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.0.0)
-- 安装包：[`AutoLauncher-v1.0.0.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.0.0/AutoLauncher-v1.0.0.apk)
+- 当前版本：[`v1.1.0`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.1.0)
+- 安装包：[`AutoLauncher-v1.1.0.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.1.0/AutoLauncher-v1.1.0.apk)
 - 历史版本：[`Releases`](https://github.com/ShuTianLe/auto-launcher/releases)
 
 ## 功能
@@ -28,6 +30,8 @@
 - 触发时间使用 24 小时制
 - 随机窗口按“基准时间后 0..N 分钟”计算
 - 支持每天、中国工作日、指定周几三种重复方式
+- 支持给单个任务添加多个一次性跳过日期，适合临时请假或单日暂停
+- 支持查看单个任务未来 7 天的执行/跳过预览
 - 目标应用可从本机已安装应用中选择
 - 任务执行后自动回到 `Auto Launcher`
 - 设备管理器开启后可在任务结束后锁屏

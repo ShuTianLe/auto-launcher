@@ -23,10 +23,10 @@ class AppContainer(app: Application) {
     private val appContext = app.applicationContext
     private val database = AutoLauncherDatabase.build(appContext)
 
-    val taskRepository = TaskRepository(database.taskDao(), database.logDao())
+    val taskRepository = TaskRepository(database.taskDao(), database.taskSkipDateDao(), database.logDao())
     val holidayRepository = HolidayRepository(appContext, database.holidayDao())
     val installedAppRepository = InstalledAppRepository(appContext)
-    val taskScheduler = TaskScheduler(appContext, database.taskDao(), holidayRepository)
+    val taskScheduler = TaskScheduler(appContext, database.taskDao(), database.taskSkipDateDao(), holidayRepository)
     val permissionInspector = PermissionInspector(appContext)
 
     fun ensureBackgroundWorkConfigured() {

@@ -1,6 +1,8 @@
 package com.stl.autolauncher.data
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import java.time.DayOfWeek
@@ -58,6 +60,30 @@ data class TaskEntity(
             .mapNotNull { number -> DayOfWeek.entries.getOrNull(number - 1) }
             .toSet()
     }
+}
+
+@Entity(
+    tableName = "task_skip_dates",
+    primaryKeys = ["taskId", "date"],
+    foreignKeys = [
+        ForeignKey(
+            entity = TaskEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["taskId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index(value = ["taskId"]),
+        Index(value = ["date"]),
+    ],
+)
+data class TaskSkipDateEntity(
+    val taskId: Long,
+    val date: String,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+) {
+    fun localDate(): LocalDate = LocalDate.parse(date)
 }
 
 @Entity(tableName = "execution_logs")

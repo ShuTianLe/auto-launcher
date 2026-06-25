@@ -6,21 +6,20 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.stl.autolauncher.data.HolidayRepository
-import com.stl.autolauncher.data.RepeatRule
 import com.stl.autolauncher.data.TaskDao
 import com.stl.autolauncher.data.TaskEntity
+import com.stl.autolauncher.data.TaskSkipDateDao
 import com.stl.autolauncher.receiver.TaskAlarmReceiver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
-import kotlin.random.Random
 
 class TaskScheduler(
     private val context: Context,
     private val taskDao: TaskDao,
+    private val taskSkipDateDao: TaskSkipDateDao,
     private val holidayRepository: HolidayRepository,
 ) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
@@ -67,34 +66,18 @@ class TaskScheduler(
     }
 
     private suspend fun computeNextOccurrence(task: TaskEntity, nowMillis: Long): ScheduledOccurrence? = withContext(Dispatchers.Default) {
-        val today = LocalDate.now(zoneId)
-        for (offset in 0..400) {
-            val date = today.plusDays(offset.toLong())
-            val matches = when (task.repeatRule) {
-                RepeatRule.DAILY -> true
-                RepeatRule.WEEKLY -> date.dayOfWeek in task.weeklyDays()
-                RepeatRule.WORKDAY_CN -> holidayRepository.isChineseWorkday(date) == true
-            }
-            if (!matches) continue
-
-            val base = LocalDateTime.of(date, LocalTime.of(task.hour, task.minute))
-            val existingSchedule = if (
-                task.scheduledDate == date.toString() &&
-                task.nextTriggerAtMillis != null &&
-                task.nextTriggerAtMillis > nowMillis
-            ) {
-                ScheduledOccurrence(date, task.nextTriggerAtMillis, task.scheduledOffsetMinutes ?: 0)
-            } else {
-                val offsetMinutes = if (task.randomWindowMinutes <= 0) 0 else Random.nextInt(task.randomWindowMinutes + 1)
-                val triggerAt = base.plusMinutes(offsetMinutes.toLong()).atZone(zoneId).toInstant().toEpochMilli()
-                ScheduledOccurrence(date, triggerAt, offsetMinutes)
-            }
-
-            if (existingSchedule.triggerAtMillis > nowMillis) {
-                return@withContext existingSchedule
-            }
-        }
-        null
+        val today = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+        taskSkipDateDao.prunePastDates(today.toString())
+        val skipDates = taskSkipDateDao.getDatesByTaskId(task.id)
+            .mapNotNull { value -> runCatching { LocalDate.parse(value) }.getOrNull() }
+            .toSet()
+        ScheduleCalculator.findNextOccurrence(
+            task = task,
+            nowMillis = nowMillis,
+            zoneId = zoneId,
+            skipDates = skipDates,
+            workdayResolver = { date -> holidayRepository.isChineseWorkday(date) },
+        )
     }
 
     private fun scheduleAlarm(taskId: Long, triggerAtMillis: Long) {
@@ -116,10 +99,4 @@ class TaskScheduler(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
-
-    private data class ScheduledOccurrence(
-        val scheduledDate: LocalDate,
-        val triggerAtMillis: Long,
-        val offsetMinutes: Int,
-    )
 }
