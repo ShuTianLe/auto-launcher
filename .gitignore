@@ -8,3 +8,7 @@
 app/build
 /.gradle/
 /AutoLauncher-release.apk
+node_modules
+console/.next
+console/node_modules
+console/.env*.local

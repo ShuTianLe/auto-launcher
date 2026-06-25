@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added a web console prototype under `console/`.
+- Added device-code-only access for the console demo.
+- Added fake-device task management, batch skip-date editing, 7-day previews, and logs.
+- Deployed the console prototype to `https://auto-launcher.19930630.xyz`.
+
 ## v1.1.0
 
 - Added per-task one-time skip dates, with support for multiple dates per task.

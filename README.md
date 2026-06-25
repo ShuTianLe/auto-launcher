@@ -24,6 +24,13 @@
 - 安装包：[`AutoLauncher-v1.1.0.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.1.0/AutoLauncher-v1.1.0.apk)
 - 历史版本：[`Releases`](https://github.com/ShuTianLe/auto-launcher/releases)
 
+## 远程控制台原型
+
+- 控制台地址：`https://auto-launcher.19930630.xyz`
+- 测试设备码：`AUTO-DEMO-19930630`
+- 控制台代码位于 `console/`
+- 当前控制台使用假设备数据和浏览器本地存储，暂未连接 Android App
+
 ## 功能
 
 - 支持创建多条任务，按下一次触发时间排列
@@ -93,6 +100,7 @@
 - WorkManager
 - Foreground Service
 - Exact Alarm
+- Next.js 控制台原型
 
 ## 本地构建
 
@@ -106,4 +114,12 @@
 
 ```bash
 ./gradlew assembleRelease
+```
+
+控制台本地运行：
+
+```bash
+cd console
+npm install
+npm run dev
 ```
