@@ -4,6 +4,11 @@ export type ExecutionStatus = "STARTED" | "SUCCESS" | "FAILED" | "SKIPPED";
 
 export type PreviewStatus = "SCHEDULED" | "SKIPPED" | "NO_TASK" | "WAITING_HOLIDAY_DATA" | "DISABLED";
 
+export interface InstalledApp {
+  label: string;
+  packageName: string;
+}
+
 export interface DevicePermissions {
   exactAlarmsGranted: boolean;
   ignoreBatteryOptimizations: boolean;
@@ -21,6 +26,7 @@ export interface DeviceSnapshot {
   appVersion: string;
   lastSyncAtMillis: number;
   timezone: string;
+  installedApps: InstalledApp[];
   permissions: DevicePermissions;
 }
 
@@ -72,7 +78,7 @@ export interface CommandLog {
 }
 
 export interface ConsoleState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   device: DeviceSnapshot;
   tasks: Task[];
   executionLogs: ExecutionLog[];

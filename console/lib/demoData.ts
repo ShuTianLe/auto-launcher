@@ -1,7 +1,16 @@
 import type { CommandLog, ConsoleState, ExecutionLog, Task } from "@/lib/types";
 import { addDays, todayString } from "@/lib/schedule";
 
-export const storageVersion = 1;
+export const storageVersion = 2;
+
+const demoInstalledApps = [
+  { label: "飞书", packageName: "com.ss.android.lark" },
+  { label: "微信", packageName: "com.tencent.mm" },
+  { label: "钉钉", packageName: "com.alibaba.android.rimet" },
+  { label: "企业微信", packageName: "com.tencent.wework" },
+  { label: "支付宝", packageName: "com.eg.android.AlipayGphone" },
+  { label: "Auto Launcher", packageName: "com.stl.autolauncher" },
+];
 
 export function createDemoState(now = new Date()): ConsoleState {
   const today = todayString(now);
@@ -115,6 +124,7 @@ export function createDemoState(now = new Date()): ConsoleState {
       appVersion: "1.1.0",
       lastSyncAtMillis: nowMillis - 90 * 1000,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
+      installedApps: demoInstalledApps,
       permissions: {
         exactAlarmsGranted: true,
         ignoreBatteryOptimizations: true,
