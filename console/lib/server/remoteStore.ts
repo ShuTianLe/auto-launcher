@@ -240,6 +240,20 @@ export function listPendingCommands(deviceCode: string): RemoteCommand[] {
 }
 
 export function enqueueCommand(deviceCode: string, type: RemoteCommandType, payload: unknown): RemoteCommand {
+  const payloadJson = stableStringify(payload);
+  const existing = getDb().prepare(
+    `
+    SELECT * FROM commands
+    WHERE deviceCode = @deviceCode
+      AND type = @type
+      AND payloadJson = @payloadJson
+      AND status IN ('queued', 'delivered')
+    ORDER BY createdAtMillis DESC
+    LIMIT 1
+    `,
+  ).get({ deviceCode, type, payloadJson }) as CommandRow | undefined;
+  if (existing) return commandFromRow(existing);
+
   const command: RemoteCommand = {
     id: `cmd-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
     type,
@@ -264,7 +278,7 @@ export function enqueueCommand(deviceCode: string, type: RemoteCommandType, payl
   ).run({
     ...command,
     deviceCode,
-    payloadJson: JSON.stringify(command.payload),
+    payloadJson,
   });
   return command;
 }
@@ -435,6 +449,20 @@ function readJson<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, sortJsonValue(entry)]),
+  );
 }
 
 function hashSecret(secret: string): string {

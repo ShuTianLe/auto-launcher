@@ -58,6 +58,7 @@ object ScheduleCalculator {
         for (offset in 0..NEXT_LOOKAHEAD_DAYS) {
             val date = today.plusDays(offset.toLong())
             if (matchesRepeatRule(task, date, workdayResolver) != true) continue
+            if (task.lastHandledScheduledDate == date.toString()) continue
 
             val occurrence = existingOccurrenceForDate(task, date, nowMillis)
                 ?: newOccurrenceForDate(task, date, zoneId, randomOffsetMinutes)

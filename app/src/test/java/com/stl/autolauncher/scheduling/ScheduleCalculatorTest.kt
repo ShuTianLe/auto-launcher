@@ -88,6 +88,67 @@ class ScheduleCalculatorTest {
     }
 
     @Test
+    fun completedRandomWindowDoesNotRescheduleSameScheduledDate() = runBlocking {
+        val next = ScheduleCalculator.findNextOccurrence(
+            task = task(
+                hour = 20,
+                minute = 0,
+                randomWindowMinutes = 90,
+                lastHandledScheduledDate = "2026-06-25",
+            ),
+            nowMillis = millis(2026, 6, 25, 20, 23),
+            zoneId = zoneId,
+            skipDates = emptySet(),
+            workdayResolver = { true },
+            randomOffsetMinutes = { 23 },
+        )
+
+        assertNotNull(next)
+        assertEquals(LocalDate.of(2026, 6, 26), next!!.scheduledDate)
+    }
+
+    @Test
+    fun handledExistingOccurrenceMovesToNextScheduledDate() = runBlocking {
+        val next = ScheduleCalculator.findNextOccurrence(
+            task = task(
+                scheduledDate = "2026-06-25",
+                nextTriggerAtMillis = millis(2026, 6, 25, 20, 30),
+                scheduledOffsetMinutes = 30,
+                lastHandledScheduledDate = "2026-06-25",
+            ),
+            nowMillis = millis(2026, 6, 25, 19, 0),
+            zoneId = zoneId,
+            skipDates = emptySet(),
+            workdayResolver = { true },
+            randomOffsetMinutes = { 0 },
+        )
+
+        assertNotNull(next)
+        assertEquals(LocalDate.of(2026, 6, 26), next!!.scheduledDate)
+    }
+
+    @Test
+    fun completedCrossMidnightWindowAllowsNextScheduledDate() = runBlocking {
+        val next = ScheduleCalculator.findNextOccurrence(
+            task = task(
+                hour = 23,
+                minute = 50,
+                randomWindowMinutes = 20,
+                lastHandledScheduledDate = "2026-06-25",
+            ),
+            nowMillis = millis(2026, 6, 26, 0, 7),
+            zoneId = zoneId,
+            skipDates = emptySet(),
+            workdayResolver = { true },
+            randomOffsetMinutes = { 15 },
+        )
+
+        assertNotNull(next)
+        assertEquals(LocalDate.of(2026, 6, 26), next!!.scheduledDate)
+        assertEquals(LocalDate.of(2026, 6, 27), ScheduleCalculator.actualDateFor(next.triggerAtMillis, zoneId))
+    }
+
+    @Test
     fun sevenDayPreviewMarksMultipleSkippedDates() = runBlocking {
         val preview = ScheduleCalculator.buildSevenDayPreview(
             task = task(randomWindowMinutes = 30),
@@ -136,6 +197,7 @@ class ScheduleCalculatorTest {
         scheduledDate: String? = null,
         nextTriggerAtMillis: Long? = null,
         scheduledOffsetMinutes: Int? = null,
+        lastHandledScheduledDate: String? = null,
     ): TaskEntity {
         return TaskEntity(
             id = 1L,
@@ -151,6 +213,7 @@ class ScheduleCalculatorTest {
             scheduledDate = scheduledDate,
             nextTriggerAtMillis = nextTriggerAtMillis,
             scheduledOffsetMinutes = scheduledOffsetMinutes,
+            lastHandledScheduledDate = lastHandledScheduledDate,
         )
     }
 

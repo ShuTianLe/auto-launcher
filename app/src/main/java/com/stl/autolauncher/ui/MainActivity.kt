@@ -862,6 +862,7 @@ private fun TaskEditorScreen(viewModel: MainViewModel, taskId: Long?, onBack: ()
                                             nextTriggerAtMillis = null,
                                             scheduledDate = null,
                                             scheduledOffsetMinutes = null,
+                                            lastHandledScheduledDate = existingTask?.lastHandledScheduledDate,
                                             createdAtMillis = existingTask?.createdAtMillis ?: System.currentTimeMillis(),
                                         ),
                                     ) { onBack() }

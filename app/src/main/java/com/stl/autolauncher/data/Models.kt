@@ -50,6 +50,7 @@ data class TaskEntity(
     val nextTriggerAtMillis: Long? = null,
     val scheduledDate: String? = null,
     val scheduledOffsetMinutes: Int? = null,
+    val lastHandledScheduledDate: String? = null,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 ) {

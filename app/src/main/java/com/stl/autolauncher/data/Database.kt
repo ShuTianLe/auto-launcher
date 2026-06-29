@@ -21,7 +21,16 @@ interface TaskDao {
     @Query("SELECT * FROM tasks ORDER BY id ASC")
     suspend fun getAll(): List<TaskEntity>
 
-    @Query("SELECT * FROM tasks WHERE nextTriggerAtMillis IS NOT NULL AND nextTriggerAtMillis <= :nowMillis AND enabled = 1 ORDER BY nextTriggerAtMillis ASC")
+    @Query(
+        """
+        SELECT * FROM tasks
+        WHERE nextTriggerAtMillis IS NOT NULL
+          AND nextTriggerAtMillis <= :nowMillis
+          AND enabled = 1
+          AND (scheduledDate IS NULL OR lastHandledScheduledDate IS NULL OR scheduledDate != lastHandledScheduledDate)
+        ORDER BY nextTriggerAtMillis ASC
+        """
+    )
     suspend fun getDueTasks(nowMillis: Long): List<TaskEntity>
 
     @Query("SELECT * FROM tasks WHERE id = :taskId LIMIT 1")
@@ -53,6 +62,31 @@ interface TaskDao {
         scheduledOffsetMinutes: Int?,
         updatedAtMillis: Long,
     )
+
+    @Query(
+        """
+        UPDATE tasks
+        SET lastHandledScheduledDate = :scheduledDate,
+            updatedAtMillis = :updatedAtMillis
+        WHERE id = :taskId
+          AND scheduledDate = :scheduledDate
+          AND (lastHandledScheduledDate IS NULL OR lastHandledScheduledDate != :scheduledDate)
+        """
+    )
+    suspend fun markScheduledDateHandled(taskId: Long, scheduledDate: String, updatedAtMillis: Long): Int
+
+    @Query(
+        """
+        UPDATE tasks
+        SET nextTriggerAtMillis = NULL,
+            scheduledDate = NULL,
+            scheduledOffsetMinutes = NULL,
+            updatedAtMillis = :updatedAtMillis
+        WHERE id = :taskId
+          AND scheduledDate = :scheduledDate
+        """
+    )
+    suspend fun clearScheduleIfScheduledDateMatches(taskId: Long, scheduledDate: String, updatedAtMillis: Long): Int
 
     @Query("DELETE FROM tasks WHERE id = :taskId")
     suspend fun deleteById(taskId: Long)
@@ -116,7 +150,7 @@ interface HolidayDao {
 
 @Database(
     entities = [TaskEntity::class, TaskSkipDateEntity::class, ExecutionLogEntity::class, HolidayEntryEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 @TypeConverters(RoomConverters::class)
@@ -146,12 +180,18 @@ abstract class AutoLauncherDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `tasks` ADD COLUMN `lastHandledScheduledDate` TEXT")
+            }
+        }
+
         fun build(context: Context): AutoLauncherDatabase {
             return Room.databaseBuilder(
                 context,
                 AutoLauncherDatabase::class.java,
                 "auto_launcher.db",
-            ).addMigrations(MIGRATION_1_2).build()
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
         }
     }
 }

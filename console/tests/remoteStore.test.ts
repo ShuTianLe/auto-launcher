@@ -76,4 +76,22 @@ describe("remote store", async () => {
     expect(state.tasks).toHaveLength(1);
     expect(state.commandLogs[0].status).toBe("applied");
   });
+
+  it("reuses an unfinished duplicate command", () => {
+    const deviceCode = "AL-TEST-0002";
+    const secret = "secret-secret-secret-secret";
+    store.registerDevice({ deviceCode, secret, displayName: "测试机 2" });
+
+    const first = store.enqueueCommand(deviceCode, "SET_TASK_ENABLED", {
+      taskId: "7",
+      enabled: true,
+    });
+    const duplicate = store.enqueueCommand(deviceCode, "SET_TASK_ENABLED", {
+      enabled: true,
+      taskId: "7",
+    });
+
+    expect(duplicate.id).toBe(first.id);
+    expect(store.commandLogsForDevice(deviceCode)).toHaveLength(1);
+  });
 });

@@ -177,28 +177,44 @@ class RemoteSyncWorker(
             .getOrDefault(RepeatRule.WORKDAY_CN)
         val weeklyDays = payload.optJSONArray("weeklyDays").toCsv()
         val now = System.currentTimeMillis()
-        val taskId = container.taskRepository.saveTask(
-            TaskEntity(
-                id = 0,
-                name = name,
-                hour = payload.optInt("hour").coerceIn(0, 23),
-                minute = payload.optInt("minute").coerceIn(0, 59),
-                randomWindowMinutes = payload.optInt("randomWindowMinutes").coerceIn(0, 240),
-                repeatRule = repeatRule,
-                daysOfWeekCsv = if (repeatRule == RepeatRule.WEEKLY) weeklyDays else "",
-                targetPackage = targetPackage,
-                targetAppLabel = targetAppLabel,
-                waitDurationSeconds = payload.optInt("waitDurationSeconds").coerceIn(1, 7200),
-                enabled = payload.optBoolean("enabled", true),
-                createdAtMillis = now,
-                updatedAtMillis = now,
-            ),
+        val task = TaskEntity(
+            id = 0,
+            name = name,
+            hour = payload.optInt("hour").coerceIn(0, 23),
+            minute = payload.optInt("minute").coerceIn(0, 59),
+            randomWindowMinutes = payload.optInt("randomWindowMinutes").coerceIn(0, 240),
+            repeatRule = repeatRule,
+            daysOfWeekCsv = if (repeatRule == RepeatRule.WEEKLY) weeklyDays else "",
+            targetPackage = targetPackage,
+            targetAppLabel = targetAppLabel,
+            waitDurationSeconds = payload.optInt("waitDurationSeconds").coerceIn(1, 7200),
+            enabled = payload.optBoolean("enabled", true),
+            createdAtMillis = now,
+            updatedAtMillis = now,
         )
-        container.taskScheduler.reconcileTask(taskId)
+        val existingTask = container.taskRepository.getAllTasks().firstOrNull { current ->
+            current.name == task.name &&
+                current.hour == task.hour &&
+                current.minute == task.minute &&
+                current.randomWindowMinutes == task.randomWindowMinutes &&
+                current.repeatRule == task.repeatRule &&
+                current.daysOfWeekCsv == task.daysOfWeekCsv &&
+                current.targetPackage == task.targetPackage &&
+                current.waitDurationSeconds == task.waitDurationSeconds
+        }
+        val taskId = existingTask?.id ?: container.taskRepository.saveTask(task)
+        if (existingTask == null) {
+            container.taskScheduler.reconcileTask(taskId)
+        }
         if (repeatRule == RepeatRule.WORKDAY_CN) {
             HolidaySyncWorker.enqueueNow(applicationContext, "remote_create_workday_task")
         }
-        container.taskRepository.appendLog(taskId, name, ExecutionStatus.SUCCESS, "已应用远程新建任务命令")
+        container.taskRepository.appendLog(
+            taskId,
+            name,
+            ExecutionStatus.SUCCESS,
+            if (existingTask == null) "已应用远程新建任务命令" else "远程新建任务已存在，未重复创建",
+        )
     }
 
     private suspend fun applySetTaskEnabled(command: RemoteCommand) {

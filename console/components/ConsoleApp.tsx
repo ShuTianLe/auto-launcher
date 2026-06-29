@@ -269,7 +269,7 @@ export function ConsoleApp({ initialState }: { initialState: ConsoleState }) {
           </div>
           <div className="topbar-actions">
             {section === "tasks" ? (
-              <button className="primary-button" type="button" onClick={openCreateTask}>
+              <button className="primary-button" type="button" onClick={openCreateTask} disabled={syncing}>
                 <Plus size={16} />
                 新建任务
               </button>
@@ -323,6 +323,7 @@ export function ConsoleApp({ initialState }: { initialState: ConsoleState }) {
             selectedTask={selectedTask}
             selectedSkipDates={selectedSkipDates}
             calendarMonth={calendarMonth}
+            syncing={syncing}
             onCalendarMonthChange={setCalendarMonth}
             onToggleSkipDate={toggleSkipDateSelection}
             onClearSkipSelection={() => setSelectedSkipDates([])}
@@ -350,6 +351,7 @@ export function ConsoleApp({ initialState }: { initialState: ConsoleState }) {
         <TaskCreateDialog
           apps={state.device.installedApps}
           draft={taskDraft}
+          syncing={syncing}
           onClose={() => setTaskDraft(null)}
           onDraftChange={setTaskDraft}
           onSubmit={createTask}
@@ -440,6 +442,7 @@ function TasksSection({
   selectedTask,
   selectedSkipDates,
   calendarMonth,
+  syncing,
   onCalendarMonthChange,
   onToggleSkipDate,
   onClearSkipSelection,
@@ -454,6 +457,7 @@ function TasksSection({
   selectedTask: Task | null;
   selectedSkipDates: string[];
   calendarMonth: string;
+  syncing: boolean;
   onCalendarMonthChange: (month: string) => void;
   onToggleSkipDate: (date: string) => void;
   onClearSkipSelection: () => void;
@@ -516,7 +520,7 @@ function TasksSection({
               <p className="eyebrow">{selectedTask.targetPackage}</p>
               <h2>{selectedTask.name}</h2>
             </div>
-            <button className="ghost-button" type="button" onClick={() => onToggleTask(selectedTask)}>
+            <button className="ghost-button" type="button" onClick={() => onToggleTask(selectedTask)} disabled={syncing}>
               {selectedTask.enabled ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
               {selectedTask.enabled ? "停用" : "启用"}
             </button>
@@ -546,7 +550,7 @@ function TasksSection({
               />
               <div className="calendar-actions">
                 <span>{selectedSkipDates.length > 0 ? `已选 ${selectedSkipDates.length} 天` : "未选择日期"}</span>
-                <button className="ghost-button" type="button" onClick={onClearSkipSelection} disabled={selectedSkipDates.length === 0}>
+                <button className="ghost-button" type="button" onClick={onClearSkipSelection} disabled={selectedSkipDates.length === 0 || syncing}>
                   <X size={16} />
                   清空
                 </button>
@@ -554,7 +558,7 @@ function TasksSection({
                   className="primary-button"
                   type="button"
                   onClick={() => onAddSkipDates(selectedTask, selectedSkipDates)}
-                  disabled={selectedSkipDates.length === 0}
+                  disabled={selectedSkipDates.length === 0 || syncing}
                 >
                   <Plus size={16} />
                   添加选中日期
@@ -606,12 +610,14 @@ function TasksSection({
 function TaskCreateDialog({
   apps,
   draft,
+  syncing,
   onClose,
   onDraftChange,
   onSubmit,
 }: {
   apps: InstalledApp[];
   draft: TaskDraft;
+  syncing: boolean;
   onClose: () => void;
   onDraftChange: (draft: TaskDraft) => void;
   onSubmit: (draft: TaskDraft) => void;
@@ -748,10 +754,10 @@ function TaskCreateDialog({
           </div>
 
           <div className="dialog-actions">
-            <button className="ghost-button" type="button" onClick={onClose}>
+            <button className="ghost-button" type="button" onClick={onClose} disabled={syncing}>
               取消
             </button>
-            <button className="primary-button" type="submit" disabled={!canSubmit}>
+            <button className="primary-button" type="submit" disabled={!canSubmit || syncing}>
               <Save size={16} />
               保存任务
             </button>

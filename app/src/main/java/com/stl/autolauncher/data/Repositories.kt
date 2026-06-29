@@ -77,6 +77,10 @@ class TaskRepository(
         )
     }
 
+    suspend fun markScheduledDateHandled(taskId: Long, scheduledDate: String): Boolean {
+        return taskDao.markScheduledDateHandled(taskId, scheduledDate, System.currentTimeMillis()) > 0
+    }
+
     suspend fun deleteTask(taskId: Long) {
         taskSkipDateDao.deleteByTaskId(taskId)
         taskDao.deleteById(taskId)

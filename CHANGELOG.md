@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v1.2.2
+
+- Fixed repeated execution inside the same random window.
+- Kept due schedules stable during background rescheduling instead of drawing another same-day random time.
+- Added duplicate protection for pending remote commands and repeated remote task creation.
+
 ## v1.2.1
 
 - Fixed remote console charging status. The Android app now reports whether the device is connected to power.

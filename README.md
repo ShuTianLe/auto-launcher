@@ -21,8 +21,8 @@
 
 ## 下载
 
-- 当前版本：[`v1.2.1`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.2.1)
-- 安装包：[`AutoLauncher-v1.2.1.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.2.1/AutoLauncher-v1.2.1.apk)
+- 当前版本：[`v1.2.2`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.2.2)
+- 安装包：[`AutoLauncher-v1.2.2.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.2.2/AutoLauncher-v1.2.2.apk)
 - 历史版本：[`Releases`](https://github.com/ShuTianLe/auto-launcher/releases)
 
 ## 远程控制台

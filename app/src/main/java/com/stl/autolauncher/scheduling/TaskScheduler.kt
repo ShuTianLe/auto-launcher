@@ -37,6 +37,10 @@ class TaskScheduler(
             taskDao.updateSchedule(taskId, null, null, null, System.currentTimeMillis())
             return
         }
+        if (task.hasUnhandledDueSchedule(nowMillis)) {
+            scheduleAlarm(taskId, nowMillis)
+            return
+        }
         val next = computeNextOccurrence(task, nowMillis)
         if (next == null) {
             cancelTask(taskId)
@@ -53,11 +57,16 @@ class TaskScheduler(
         scheduleAlarm(taskId, next.triggerAtMillis)
     }
 
-    suspend fun onTaskCompleted(taskId: Long) {
+    suspend fun onTaskCompleted(taskId: Long, handledScheduledDate: String? = null) {
         val task = taskDao.getById(taskId) ?: return
         cancelTask(taskId)
-        val cleared = task.copy(nextTriggerAtMillis = null, scheduledDate = null, scheduledOffsetMinutes = null)
-        taskDao.upsert(cleared)
+        val scheduledDate = handledScheduledDate ?: task.scheduledDate
+        if (scheduledDate != null) {
+            taskDao.markScheduledDateHandled(taskId, scheduledDate, System.currentTimeMillis())
+            taskDao.clearScheduleIfScheduledDateMatches(taskId, scheduledDate, System.currentTimeMillis())
+        } else {
+            taskDao.updateSchedule(taskId, null, null, null, System.currentTimeMillis())
+        }
         reconcileTask(taskId, System.currentTimeMillis() + 1_000)
     }
 
@@ -98,5 +107,12 @@ class TaskScheduler(
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    }
+
+    private fun TaskEntity.hasUnhandledDueSchedule(nowMillis: Long): Boolean {
+        val triggerAtMillis = nextTriggerAtMillis ?: return false
+        if (triggerAtMillis > nowMillis) return false
+        val scheduled = scheduledDate ?: return true
+        return lastHandledScheduledDate != scheduled
     }
 }

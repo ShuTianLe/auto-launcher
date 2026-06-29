@@ -70,10 +70,15 @@ class TaskExecutionService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification("执行计划任务中"))
         while (true) {
             val task = container.taskRepository.getDueTasks(System.currentTimeMillis()).firstOrNull() ?: break
+            val scheduledDate = task.scheduledDate
+            if (scheduledDate != null && !container.taskRepository.markScheduledDateHandled(task.id, scheduledDate)) {
+                container.taskScheduler.onTaskCompleted(task.id, scheduledDate)
+                continue
+            }
             if (!skipDueTaskIfNeeded(task)) {
                 executeTask(task)
             }
-            container.taskScheduler.onTaskCompleted(task.id)
+            container.taskScheduler.onTaskCompleted(task.id, scheduledDate)
         }
     }
 
