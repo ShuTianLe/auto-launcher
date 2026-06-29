@@ -12,3 +12,4 @@ node_modules
 console/.next
 console/node_modules
 console/.env*.local
+console/.data

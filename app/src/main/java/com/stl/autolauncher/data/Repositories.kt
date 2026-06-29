@@ -41,6 +41,8 @@ class TaskRepository(
 
     suspend fun getDueTasks(nowMillis: Long): List<TaskEntity> = taskDao.getDueTasks(nowMillis)
 
+    suspend fun getRecentLogs(limit: Int): List<ExecutionLogEntity> = logDao.getRecent(limit)
+
     suspend fun getSkipDates(taskId: Long): Set<LocalDate> {
         return taskSkipDateDao.getDatesByTaskId(taskId)
             .mapNotNull { value -> runCatching { LocalDate.parse(value) }.getOrNull() }

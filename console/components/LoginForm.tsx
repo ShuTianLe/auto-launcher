@@ -62,7 +62,7 @@ export function LoginForm() {
           </button>
         </form>
 
-        <p className="login-footnote">当前版本是控制台原型，数据暂未连接 Android 设备。</p>
+        <p className="login-footnote">设备码可在 Android App 的“权限与系统设置”页查看。</p>
       </section>
     </main>
   );

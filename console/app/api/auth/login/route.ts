@@ -3,7 +3,7 @@ import {
   AUTH_COOKIE,
   SESSION_MAX_AGE_SECONDS,
   createSessionToken,
-  getExpectedDeviceCode,
+  isKnownDeviceCode,
   normalizeDeviceCode,
   shouldUseSecureCookie,
 } from "@/lib/auth";
@@ -16,9 +16,9 @@ export async function POST(request: Request) {
     typeof body?.deviceCode === "string" ? body.deviceCode : "",
   );
 
-  if (submitted !== normalizeDeviceCode(getExpectedDeviceCode())) {
+  if (!isKnownDeviceCode(submitted)) {
     return NextResponse.json(
-      { ok: false, message: "设备码不正确" },
+      { ok: false, message: "设备码不存在，请先在 Android App 中打开远程控制。" },
       { status: 401 },
     );
   }
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const response = NextResponse.json({ ok: true });
   response.cookies.set({
     name: AUTH_COOKIE,
-    value: createSessionToken(),
+    value: createSessionToken(submitted),
     httpOnly: true,
     sameSite: "lax",
     secure: shouldUseSecureCookie(request),

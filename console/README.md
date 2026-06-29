@@ -1,8 +1,8 @@
 # Auto Launcher Console
 
-Remote-control console prototype for Auto Launcher.
+Remote-control console for Auto Launcher.
 
-The first version uses a fake device code and browser-local mock data. It does not connect to the Android app yet.
+The Android app remains the source of truth for tasks. The console stores the latest app snapshot in SQLite and queues commands for the app to apply during polling.
 
 ## Local
 
@@ -13,15 +13,11 @@ npm run dev
 
 Open `http://127.0.0.1:18130`.
 
-Default demo device code:
-
-```text
-AUTO-DEMO-19930630
-```
+Use the device code shown in the Android app settings page.
 
 ## Production
 
-Set `DEVICE_CODE` and `SESSION_SECRET` in the runtime environment, then run:
+Set `SESSION_SECRET` and optionally `AUTO_LAUNCHER_DATA_DIR` in the runtime environment, then run:
 
 ```bash
 npm run build

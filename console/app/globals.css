@@ -337,6 +337,16 @@ p {
   color: #775a08;
 }
 
+.error-strip {
+  margin-bottom: 16px;
+  border: 1px solid #efb2b2;
+  border-radius: var(--radius);
+  background: var(--red-soft);
+  color: var(--red);
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
 .primary-button,
 .ghost-button,
 .icon-button {

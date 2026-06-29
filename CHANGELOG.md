@@ -2,10 +2,15 @@
 
 ## Unreleased
 
-- Added a web console prototype under `console/`.
-- Added device-code-only access for the console demo.
-- Added fake-device task management, batch skip-date editing, 7-day previews, and logs.
-- Deployed the console prototype to `https://auto-launcher.19930630.xyz`.
+## v1.2.0
+
+- Added real remote-console sync while keeping Android App as the task source of truth.
+- Added App-generated device codes and device-secret authentication for App-to-console sync.
+- Added SQLite-backed console storage for device snapshots and queued Web commands.
+- Added 30-second Android polling for remote commands, with immediate result reporting after commands are applied.
+- Added Web command flow for creating tasks, toggling tasks, adding skip dates, and removing skip dates.
+- Added remote sync status and device code display in the Android permissions/settings page.
+- Updated the console UI to show real App snapshots, command queue state, and App-sourced installed apps.
 
 ## v1.1.0
 

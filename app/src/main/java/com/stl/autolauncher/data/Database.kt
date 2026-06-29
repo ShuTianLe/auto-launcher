@@ -90,6 +90,9 @@ interface LogDao {
     @Query("SELECT * FROM execution_logs ORDER BY createdAtMillis DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<ExecutionLogEntity>>
 
+    @Query("SELECT * FROM execution_logs ORDER BY createdAtMillis DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int): List<ExecutionLogEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(log: ExecutionLogEntity)
 

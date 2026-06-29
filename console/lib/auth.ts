@@ -1,14 +1,11 @@
 import crypto from "node:crypto";
+import { hasRegisteredDevice } from "@/lib/server/remoteStore";
 
 export const AUTH_COOKIE = "auto_launcher_console";
 export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 const fallbackSecret = "auto-launcher-console-demo-session-secret";
 const fallbackDeviceCode = "AUTO-DEMO-19930630";
-
-export function getExpectedDeviceCode(): string {
-  return process.env.DEVICE_CODE?.trim() || fallbackDeviceCode;
-}
 
 export function normalizeDeviceCode(value: string): string {
   return value.trim().toUpperCase().replace(/\s+/g, "");
@@ -20,26 +17,38 @@ export function shouldUseSecureCookie(request: Request): boolean {
   return new URL(request.url).protocol === "https:";
 }
 
-export function createSessionToken(nowMillis = Date.now()): string {
+export function isKnownDeviceCode(deviceCode: string): boolean {
+  const normalized = normalizeDeviceCode(deviceCode);
+  if (hasRegisteredDevice(normalized)) return true;
+  return process.env.NODE_ENV !== "production" && normalized === normalizeDeviceCode(process.env.DEVICE_CODE || fallbackDeviceCode);
+}
+
+export function createSessionToken(deviceCode: string, nowMillis = Date.now()): string {
   const issuedAt = nowMillis.toString();
   const expiresAt = (nowMillis + SESSION_MAX_AGE_SECONDS * 1000).toString();
-  const payload = `${issuedAt}.${expiresAt}`;
+  const encodedDeviceCode = Buffer.from(normalizeDeviceCode(deviceCode), "utf8").toString("base64url");
+  const payload = `${issuedAt}.${expiresAt}.${encodedDeviceCode}`;
   return `${payload}.${sign(payload)}`;
 }
 
 export function isValidSessionToken(token: string | undefined): boolean {
-  if (!token) return false;
+  return getSessionDeviceCode(token) !== null;
+}
+
+export function getSessionDeviceCode(token: string | undefined): string | null {
+  if (!token) return null;
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 4) return null;
 
-  const [issuedAt, expiresAt, signature] = parts;
-  if (!/^\d+$/.test(issuedAt) || !/^\d+$/.test(expiresAt)) return false;
+  const [issuedAt, expiresAt, encodedDeviceCode, signature] = parts;
+  if (!/^\d+$/.test(issuedAt) || !/^\d+$/.test(expiresAt)) return null;
 
-  const payload = `${issuedAt}.${expiresAt}`;
+  const payload = `${issuedAt}.${expiresAt}.${encodedDeviceCode}`;
   const expected = sign(payload);
-  if (!safeEqual(signature, expected)) return false;
+  if (!safeEqual(signature, expected)) return null;
 
-  return Number(expiresAt) > Date.now();
+  if (Number(expiresAt) <= Date.now()) return null;
+  return Buffer.from(encodedDeviceCode, "base64url").toString("utf8");
 }
 
 function sign(payload: string): string {

@@ -110,6 +110,7 @@ import com.stl.autolauncher.data.ExecutionStatus
 import com.stl.autolauncher.data.HolidaySyncSummary
 import com.stl.autolauncher.data.InstalledApp
 import com.stl.autolauncher.data.PermissionSnapshot
+import com.stl.autolauncher.data.RemoteDeviceInfo
 import com.stl.autolauncher.data.RepeatRule
 import com.stl.autolauncher.data.TaskEntity
 import com.stl.autolauncher.data.TaskSkipDateEntity
@@ -119,6 +120,7 @@ import com.stl.autolauncher.scheduling.SchedulePreviewDay
 import com.stl.autolauncher.scheduling.SchedulePreviewStatus
 import com.stl.autolauncher.scheduling.ScheduleWindow
 import com.stl.autolauncher.scheduling.HolidaySyncWorker
+import com.stl.autolauncher.scheduling.RemoteSyncWorker
 import com.stl.autolauncher.ui.theme.AutoLauncherTheme
 import com.stl.autolauncher.util.formatNextTrigger
 import com.stl.autolauncher.util.repeatSummary
@@ -192,6 +194,9 @@ class MainViewModel(
     private val _permissions = MutableStateFlow(container.permissionInspector.snapshot())
     val permissions: StateFlow<PermissionSnapshot> = _permissions.asStateFlow()
 
+    private val _remoteInfo = MutableStateFlow(container.remoteDeviceStore.info())
+    val remoteInfo: StateFlow<RemoteDeviceInfo> = _remoteInfo.asStateFlow()
+
     private val _holidaySyncState = MutableStateFlow(HolidaySyncUiState())
     val holidaySyncState: StateFlow<HolidaySyncUiState> = _holidaySyncState.asStateFlow()
 
@@ -220,6 +225,13 @@ class MainViewModel(
 
     fun refreshPermissions() {
         _permissions.value = container.permissionInspector.snapshot()
+        _remoteInfo.value = container.remoteDeviceStore.info()
+    }
+
+    fun syncRemoteNow() {
+        RemoteSyncWorker.enqueueNow(getApplication(), "manual")
+        refreshPermissions()
+        _syncMessages.tryEmit("已请求远程控制台同步")
     }
 
     fun saveTask(task: TaskEntity, onComplete: () -> Unit) {
@@ -387,6 +399,7 @@ private fun AutoLauncherRoot(viewModel: MainViewModel, activity: Activity) {
     val permissions by viewModel.permissions.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val holidaySyncState by viewModel.holidaySyncState.collectAsState()
+    val remoteInfo by viewModel.remoteInfo.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(viewModel) {
@@ -471,8 +484,10 @@ private fun AutoLauncherRoot(viewModel: MainViewModel, activity: Activity) {
                 PermissionsScreen(
                     snapshot = permissions,
                     holidaySyncState = holidaySyncState,
+                    remoteInfo = remoteInfo,
                     onRefresh = viewModel::refreshPermissions,
                     onSyncHoliday = viewModel::refreshHolidayCalendar,
+                    onSyncRemote = viewModel::syncRemoteNow,
                     activity = activity,
                 )
             }
@@ -1417,8 +1432,10 @@ private fun LogCard(log: ExecutionLogEntity) {
 private fun PermissionsScreen(
     snapshot: PermissionSnapshot,
     holidaySyncState: HolidaySyncUiState,
+    remoteInfo: RemoteDeviceInfo,
     onRefresh: () -> Unit,
     onSyncHoliday: () -> Unit,
+    onSyncRemote: () -> Unit,
     activity: Activity,
 ) {
     val syncMessageColor = when (holidaySyncState.status) {
@@ -1452,6 +1469,28 @@ private fun PermissionsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+                item {
+                    SectionCard(
+                        title = "远程控制台",
+                        subtitle = "App 本地数据是任务真源；Web 控制台通过这个设备码查看状态和下发命令。",
+                    ) {
+                        TaskMetaRow(icon = Icons.Default.PhoneAndroid, label = "设备码", value = remoteInfo.deviceCode)
+                        TaskMetaRow(
+                            icon = Icons.Default.Refresh,
+                            label = "最近同步",
+                            value = if (remoteInfo.lastSyncAtMillis > 0) {
+                                "${formatNextTrigger(remoteInfo.lastSyncAtMillis)} · ${remoteInfo.lastSyncMessage}"
+                            } else {
+                                remoteInfo.lastSyncMessage
+                            },
+                        )
+                        Button(onClick = onSyncRemote, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("立即同步远程控制台")
+                        }
                     }
                 }
                 item {

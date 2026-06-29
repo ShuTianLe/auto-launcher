@@ -4,6 +4,10 @@ export type ExecutionStatus = "STARTED" | "SUCCESS" | "FAILED" | "SKIPPED";
 
 export type PreviewStatus = "SCHEDULED" | "SKIPPED" | "NO_TASK" | "WAITING_HOLIDAY_DATA" | "DISABLED";
 
+export type RemoteCommandType = "CREATE_TASK" | "SET_TASK_ENABLED" | "ADD_SKIP_DATES" | "REMOVE_SKIP_DATE";
+
+export type RemoteCommandStatus = "queued" | "delivered" | "applied" | "failed";
+
 export interface InstalledApp {
   label: string;
   packageName: string;
@@ -74,6 +78,7 @@ export interface CommandLog {
   taskName: string;
   action: string;
   detail: string;
+  status?: RemoteCommandStatus;
   createdAtMillis: number;
 }
 
@@ -84,4 +89,15 @@ export interface ConsoleState {
   executionLogs: ExecutionLog[];
   commandLogs: CommandLog[];
   updatedAtMillis: number;
+}
+
+export interface RemoteCommand {
+  id: string;
+  type: RemoteCommandType;
+  payload: unknown;
+  status: RemoteCommandStatus;
+  error: string | null;
+  createdAtMillis: number;
+  deliveredAtMillis: number | null;
+  completedAtMillis: number | null;
 }

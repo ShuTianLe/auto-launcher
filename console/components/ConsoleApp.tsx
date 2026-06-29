@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlarmClock,
@@ -27,7 +27,6 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { appendCommandLog, loadConsoleState, resetConsoleState, saveConsoleState } from "@/lib/storage";
 import {
   addDays,
   buildSevenDayPreview,
@@ -83,18 +82,39 @@ const weekOptions = [
   { value: 7, label: "日" },
 ];
 
-export function ConsoleApp() {
-  const [state, setState] = useState<ConsoleState>(() => loadConsoleState());
+export function ConsoleApp({ initialState }: { initialState: ConsoleState }) {
+  const [state, setState] = useState<ConsoleState>(initialState);
   const [section, setSection] = useState<Section>("overview");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedSkipDates, setSelectedSkipDates] = useState<string[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(() => todayString().slice(0, 7));
   const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
   const [filter, setFilter] = useState<"all" | "execution" | "command">("all");
+  const [syncing, setSyncing] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const refreshState = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setSyncing(true);
+    const response = await fetch("/api/console/state", { cache: "no-store" }).catch(() => null);
+    if (!response?.ok) {
+      setErrorText("无法读取设备快照，请稍后重试。");
+      if (showSpinner) setSyncing(false);
+      return;
+    }
+    const body = (await response.json()) as { state?: ConsoleState };
+    if (body.state) {
+      setState(body.state);
+      setErrorText(null);
+    }
+    if (showSpinner) setSyncing(false);
+  }, []);
 
   useEffect(() => {
-    saveConsoleState(state);
-  }, [state]);
+    const timer = window.setInterval(() => {
+      void refreshState(false);
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [refreshState]);
 
   const selectedTask = useMemo(() => {
     return state.tasks.find((task) => task.id === selectedTaskId) ?? state.tasks[0] ?? null;
@@ -107,45 +127,35 @@ export function ConsoleApp() {
     buildSevenDayPreview(task, today)[0]?.status === "SCHEDULED",
   );
 
-  function commit(updater: (current: ConsoleState) => ConsoleState) {
-    setState((current) => updater(current));
-  }
-
-  function resetDemo() {
-    const next = resetConsoleState();
-    setState(next);
-    setSelectedTaskId(next.tasks[0]?.id ?? null);
-    setSelectedSkipDates([]);
-    setTaskDraft(null);
-  }
-
   function selectTask(taskId: string) {
     setSelectedTaskId(taskId);
     setSelectedSkipDates([]);
     setCalendarMonth(todayString().slice(0, 7));
   }
 
-  function updateTask(taskId: string, updater: (task: Task) => Task, action: string, detail: string) {
-    commit((current) => {
-      const task = current.tasks.find((candidate) => candidate.id === taskId) ?? null;
-      const next = {
-        ...current,
-        tasks: current.tasks.map((candidate) =>
-          candidate.id === taskId ? updater(candidate) : candidate,
-        ),
-        updatedAtMillis: Date.now(),
-      };
-      return appendCommandLog(next, task, action, detail);
-    });
+  async function queueCommand(type: string, payload: Record<string, unknown>) {
+    setSyncing(true);
+    const response = await fetch("/api/console/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type, payload }),
+    }).catch(() => null);
+    if (!response?.ok) {
+      setErrorText("命令下发失败，请确认控制台服务正常。");
+      setSyncing(false);
+      return false;
+    }
+    await refreshState(false);
+    setSyncing(false);
+    return true;
   }
 
   function toggleTask(task: Task) {
-    updateTask(
-      task.id,
-      (current) => ({ ...current, enabled: !current.enabled, updatedAtMillis: Date.now() }),
-      task.enabled ? "停用任务" : "启用任务",
-      task.enabled ? "任务已停用，未来时间表不再安排执行。" : "任务已启用，已重新计算未来时间表。",
-    );
+    void queueCommand("SET_TASK_ENABLED", {
+      taskId: task.id,
+      taskName: task.name,
+      enabled: !task.enabled,
+    });
   }
 
   function openCreateTask() {
@@ -153,16 +163,14 @@ export function ConsoleApp() {
     setSection("tasks");
   }
 
-  function createTask(draft: TaskDraft) {
+  async function createTask(draft: TaskDraft) {
     const app = state.device.installedApps.find((candidate) => candidate.packageName === draft.targetPackage);
     const name = draft.name.trim();
     const weeklyDays = normalizeWeeklyDays(draft.weeklyDays);
 
     if (!app || !name || (draft.repeatRule === "WEEKLY" && weeklyDays.length === 0)) return;
 
-    const now = Date.now();
-    const task: Task = {
-      id: `task-${now}-${Math.random().toString(16).slice(2, 8)}`,
+    const ok = await queueCommand("CREATE_TASK", {
       name,
       hour: clampInteger(draft.hour, 0, 23),
       minute: clampInteger(draft.minute, 0, 59),
@@ -173,27 +181,14 @@ export function ConsoleApp() {
       targetAppLabel: app.label,
       waitDurationSeconds: clampInteger(draft.waitDurationSeconds, 1, 3600),
       enabled: draft.enabled,
-      skipDates: [],
-      createdAtMillis: now,
-      updatedAtMillis: now,
-    };
-
-    commit((current) =>
-      appendCommandLog(
-        {
-          ...current,
-          tasks: [task, ...current.tasks],
-          updatedAtMillis: now,
-        },
-        task,
-        "新建任务",
-        `已创建 ${task.name}，目标应用 ${task.targetAppLabel}。`,
-      ),
-    );
-    setSelectedTaskId(task.id);
-    setSelectedSkipDates([]);
-    setCalendarMonth(todayString().slice(0, 7));
-    setTaskDraft(null);
+    });
+    if (ok) {
+      setSelectedSkipDates([]);
+      setCalendarMonth(todayString().slice(0, 7));
+      setTaskDraft(null);
+      setSection("logs");
+      setFilter("command");
+    }
   }
 
   function toggleSkipDateSelection(date: string) {
@@ -207,30 +202,20 @@ export function ConsoleApp() {
     const dates = datesToAdd.filter((date) => date >= today);
     if (dates.length === 0) return;
 
-    updateTask(
-      task.id,
-      (current) => ({
-        ...current,
-        skipDates: Array.from(new Set([...current.skipDates, ...dates])).sort(),
-        updatedAtMillis: Date.now(),
-      }),
-      "添加跳过日期",
-      `已添加 ${dates.join("、")}`,
-    );
+    void queueCommand("ADD_SKIP_DATES", {
+      taskId: task.id,
+      taskName: task.name,
+      dates,
+    });
     setSelectedSkipDates([]);
   }
 
   function removeSkipDate(task: Task, date: string) {
-    updateTask(
-      task.id,
-      (current) => ({
-        ...current,
-        skipDates: current.skipDates.filter((candidate) => candidate !== date),
-        updatedAtMillis: Date.now(),
-      }),
-      "删除跳过日期",
-      `已删除 ${date}`,
-    );
+    void queueCommand("REMOVE_SKIP_DATE", {
+      taskId: task.id,
+      taskName: task.name,
+      date,
+    });
   }
 
   async function logout() {
@@ -247,7 +232,7 @@ export function ConsoleApp() {
           </div>
           <div>
             <strong>Auto Launcher</strong>
-            <span>控制台原型</span>
+            <span>远程控制台</span>
           </div>
         </div>
 
@@ -271,7 +256,7 @@ export function ConsoleApp() {
         <div className="sidebar-status">
           <span className={state.device.online ? "dot online" : "dot offline"} />
           <div>
-            <strong>{state.device.online ? "原型设备在线" : "原型设备离线"}</strong>
+            <strong>{state.device.online ? "设备在线" : "设备离线"}</strong>
             <span>{formatDateTimeZh(state.device.lastSyncAtMillis)}</span>
           </div>
         </div>
@@ -280,7 +265,7 @@ export function ConsoleApp() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">原型设备 {state.device.deviceCode}</p>
+            <p className="eyebrow">设备 {state.device.deviceCode}</p>
             <h1>{pageTitle(section)}</h1>
           </div>
           <div className="topbar-actions">
@@ -290,9 +275,9 @@ export function ConsoleApp() {
                 新建任务
               </button>
             ) : null}
-            <button className="ghost-button" type="button" onClick={resetDemo}>
-              <RefreshCw size={16} />
-              重置演示数据
+            <button className="ghost-button" type="button" onClick={() => void refreshState(true)} disabled={syncing}>
+              <RefreshCw className={syncing ? "spin" : ""} size={16} />
+              刷新
             </button>
             <button className="icon-button" type="button" aria-label="退出" onClick={logout} title="退出">
               <LogOut size={18} />
@@ -320,10 +305,11 @@ export function ConsoleApp() {
         <div className="prototype-banner">
           <CircleAlert size={17} />
           <div>
-            <strong>Web 原型未连接真机</strong>
-            <span>这里的改动只保存在当前浏览器，不会实时同步到 Android App。</span>
+            <strong>App 是数据真源</strong>
+            <span>Web 操作会进入命令队列，等待 Android App 轮询后应用；断网不影响手机本地任务执行。</span>
           </div>
         </div>
+        {errorText ? <div className="error-strip">{errorText}</div> : null}
 
         {section === "overview" ? (
           <OverviewSection
@@ -397,7 +383,7 @@ function OverviewSection({
   return (
     <div className="section-stack">
       <div className="metric-grid">
-        <MetricCard icon={state.device.online ? Wifi : WifiOff} label="设备状态" value={state.device.online ? "原型在线" : "原型离线"} detail="未连接 Android App" />
+        <MetricCard icon={state.device.online ? Wifi : WifiOff} label="设备状态" value={state.device.online ? "在线" : "离线"} detail="由 App 最近上报时间判断" />
         <MetricCard icon={BatteryCharging} label="电量" value={`${state.device.batteryPercent}%`} detail={state.device.charging ? "正在充电" : "未充电"} />
         <MetricCard icon={AlarmClock} label="启用任务" value={`${enabledTasks.length}/${state.tasks.length}`} detail="本地调度仍由手机执行" />
         <MetricCard icon={CalendarDays} label="今日执行" value={`${dueToday.length}`} detail={dueToday.length > 0 ? dueToday.map((task) => task.name).join("、") : "今天没有已安排任务"} />
@@ -407,7 +393,7 @@ function OverviewSection({
         <div className="section-head">
           <div>
             <h2>未来任务</h2>
-            <p>按当前原型数据计算，跳过日期会直接体现在预览里。</p>
+            <p>按 App 最新上报任务计算，跳过日期会直接体现在预览里。</p>
           </div>
         </div>
         <div className="timeline-list">
@@ -491,7 +477,7 @@ function TasksSection({
         <div className="task-list-head">
           <div>
             <strong>{tasks.length} 个任务</strong>
-            <span>{installedApps.length} 个假上报应用</span>
+            <span>{installedApps.length} 个 App 上报应用</span>
           </div>
           <button className="icon-button" type="button" onClick={onOpenCreateTask} aria-label="新建任务" title="新建任务">
             <Plus size={17} />
@@ -664,7 +650,7 @@ function TaskCreateDialog({
         >
           <div className="dialog-head">
             <div>
-              <p className="eyebrow">LOCAL PROTOTYPE</p>
+                <p className="eyebrow">REMOTE COMMAND</p>
               <h2 id="create-task-title">新建任务</h2>
             </div>
             <button className="icon-button" type="button" onClick={onClose} aria-label="关闭" title="关闭">
@@ -913,7 +899,7 @@ function LogsSection({
             <div className="log-row" key={`command-${log.id}`}>
               <RefreshCw size={18} />
               <div>
-                <strong>{log.action} · {log.taskName}</strong>
+                <strong>{log.action} · {log.taskName} {log.status ? `· ${commandStatusLabel(log.status)}` : ""}</strong>
                 <span>{formatDateTimeZh(log.createdAtMillis)}</span>
                 <p>{log.detail}</p>
               </div>
@@ -942,9 +928,9 @@ function DeviceSection({ state }: { state: ConsoleState }) {
             <Smartphone size={28} />
           </div>
           <div>
-            <p className="eyebrow">假设备码</p>
+            <p className="eyebrow">设备码</p>
             <h2>{state.device.displayName}</h2>
-            <p>{state.device.deviceCode} · 未连接真机</p>
+            <p>{state.device.deviceCode} · {state.device.online ? "最近 90 秒内同步" : "等待 App 同步"}</p>
           </div>
           <StatusPill enabled={state.device.online} onlineLabel="在线" offlineLabel="离线" />
         </div>
@@ -953,14 +939,14 @@ function DeviceSection({ state }: { state: ConsoleState }) {
       <div className="metric-grid">
         <MetricCard icon={BatteryCharging} label="电量" value={`${state.device.batteryPercent}%`} detail={state.device.charging ? "正在充电" : "未充电"} />
         <MetricCard icon={Clock3} label="最后同步" value={formatDateTimeZh(state.device.lastSyncAtMillis)} detail={state.device.timezone} />
-        <MetricCard icon={MonitorSmartphone} label="App 版本" value={state.device.appVersion} detail="控制台原型未连接真机" />
+        <MetricCard icon={MonitorSmartphone} label="App 版本" value={state.device.appVersion} detail="由 Android App 上报" />
       </div>
 
       <section className="band">
         <div className="section-head">
           <div>
             <h2>权限状态</h2>
-            <p>正式联动后由手机端上报，这里先用假数据展示。</p>
+            <p>由 Android App 最近一次轮询上报。</p>
           </div>
         </div>
         <div className="permission-grid">
@@ -978,7 +964,7 @@ function DeviceSection({ state }: { state: ConsoleState }) {
         <div className="section-head">
           <div>
             <h2>上报应用</h2>
-            <p>创建任务时先使用这份假应用列表。</p>
+            <p>创建远程任务时使用 App 最近一次上报的应用列表。</p>
           </div>
         </div>
         <div className="app-list">
@@ -1068,6 +1054,13 @@ function executionStatusLabel(status: ExecutionLog["status"]): string {
   if (status === "FAILED") return "失败";
   if (status === "SKIPPED") return "已跳过";
   return "开始执行";
+}
+
+function commandStatusLabel(status: NonNullable<CommandLog["status"]>): string {
+  if (status === "queued") return "待同步";
+  if (status === "delivered") return "已下发";
+  if (status === "applied") return "已应用";
+  return "失败";
 }
 
 function pageTitle(section: Section): string {
