@@ -2,7 +2,7 @@
 
 Remote-control console for Auto Launcher.
 
-The Android app remains the source of truth for tasks. The console stores the latest app snapshot in SQLite and queues commands for the app to apply during polling.
+Tasks stay on the Android device. The console stores the latest device snapshot in SQLite and sends pending operations for the app to apply during polling.
 
 ## Local
 

@@ -2,15 +2,20 @@
 
 ## Unreleased
 
+## v1.2.1
+
+- Fixed remote console charging status. The Android app now reports whether the device is connected to power.
+- Remember the last successfully used device code on the console login page.
+- Removed noisy explanatory copy from the console and release notes.
+
 ## v1.2.0
 
-- Added real remote-console sync while keeping Android App as the task source of truth.
-- Added App-generated device codes and device-secret authentication for App-to-console sync.
-- Added SQLite-backed console storage for device snapshots and queued Web commands.
-- Added 30-second Android polling for remote commands, with immediate result reporting after commands are applied.
-- Added Web command flow for creating tasks, toggling tasks, adding skip dates, and removing skip dates.
+- Added the remote Web console.
+- Added app-generated device codes and device-secret authentication.
+- Added console storage for device snapshots and pending operations.
+- Added Android polling for remote operations and result reporting.
+- Added Web controls for creating tasks, toggling tasks, and managing skip dates.
 - Added remote sync status and device code display in the Android permissions/settings page.
-- Updated the console UI to show real App snapshots, command queue state, and App-sourced installed apps.
 
 ## v1.1.0
 

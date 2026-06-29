@@ -21,8 +21,8 @@
 
 ## 下载
 
-- 当前版本：[`v1.2.0`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.2.0)
-- 安装包：[`AutoLauncher-v1.2.0.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.2.0/AutoLauncher-v1.2.0.apk)
+- 当前版本：[`v1.2.1`](https://github.com/ShuTianLe/auto-launcher/releases/tag/v1.2.1)
+- 安装包：[`AutoLauncher-v1.2.1.apk`](https://github.com/ShuTianLe/auto-launcher/releases/download/v1.2.1/AutoLauncher-v1.2.1.apk)
 - 历史版本：[`Releases`](https://github.com/ShuTianLe/auto-launcher/releases)
 
 ## 远程控制台
@@ -30,8 +30,8 @@
 - 控制台地址：`https://auto-launcher.19930630.xyz`
 - 设备码：在 Android App 的“权限与系统设置”页查看
 - 控制台代码位于 `console/`
-- 任务数据以 Android App 本地 Room 为准；Web 控制台查看 App 上报快照并下发待执行命令
-- 手机断网或控制台不可用时，已保存的本地任务仍由 Android App 独立执行
+- 任务保存在手机本地；Web 控制台用于查看状态和修改任务
+- 手机离线或控制台不可用时，已保存的任务继续在手机上执行
 
 ## 功能
 
@@ -104,7 +104,7 @@
 - Foreground Service
 - Exact Alarm
 - Next.js 远程控制台
-- SQLite 命令队列和设备快照
+- SQLite 控制台数据存储
 
 ## 本地构建
 

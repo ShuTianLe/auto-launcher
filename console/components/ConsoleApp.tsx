@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  CircleAlert,
   ListChecks,
   LogOut,
   MonitorSmartphone,
@@ -302,13 +301,6 @@ export function ConsoleApp({ initialState }: { initialState: ConsoleState }) {
           })}
         </nav>
 
-        <div className="prototype-banner">
-          <CircleAlert size={17} />
-          <div>
-            <strong>App 是数据真源</strong>
-            <span>Web 操作会进入命令队列，等待 Android App 轮询后应用；断网不影响手机本地任务执行。</span>
-          </div>
-        </div>
         {errorText ? <div className="error-strip">{errorText}</div> : null}
 
         {section === "overview" ? (
@@ -383,9 +375,9 @@ function OverviewSection({
   return (
     <div className="section-stack">
       <div className="metric-grid">
-        <MetricCard icon={state.device.online ? Wifi : WifiOff} label="设备状态" value={state.device.online ? "在线" : "离线"} detail="由 App 最近上报时间判断" />
-        <MetricCard icon={BatteryCharging} label="电量" value={`${state.device.batteryPercent}%`} detail={state.device.charging ? "正在充电" : "未充电"} />
-        <MetricCard icon={AlarmClock} label="启用任务" value={`${enabledTasks.length}/${state.tasks.length}`} detail="本地调度仍由手机执行" />
+        <MetricCard icon={state.device.online ? Wifi : WifiOff} label="设备状态" value={state.device.online ? "在线" : "离线"} detail="最近同步判断" />
+        <MetricCard icon={BatteryCharging} label="电量" value={`${state.device.batteryPercent}%`} detail={state.device.charging ? "接入电源" : "未接入电源"} />
+        <MetricCard icon={AlarmClock} label="启用任务" value={`${enabledTasks.length}/${state.tasks.length}`} detail="手机执行" />
         <MetricCard icon={CalendarDays} label="今日执行" value={`${dueToday.length}`} detail={dueToday.length > 0 ? dueToday.map((task) => task.name).join("、") : "今天没有已安排任务"} />
       </div>
 
@@ -393,7 +385,7 @@ function OverviewSection({
         <div className="section-head">
           <div>
             <h2>未来任务</h2>
-            <p>按 App 最新上报任务计算，跳过日期会直接体现在预览里。</p>
+            <p>跳过日期会体现在预览里。</p>
           </div>
         </div>
         <div className="timeline-list">
@@ -937,16 +929,16 @@ function DeviceSection({ state }: { state: ConsoleState }) {
       </section>
 
       <div className="metric-grid">
-        <MetricCard icon={BatteryCharging} label="电量" value={`${state.device.batteryPercent}%`} detail={state.device.charging ? "正在充电" : "未充电"} />
+        <MetricCard icon={BatteryCharging} label="电量" value={`${state.device.batteryPercent}%`} detail={state.device.charging ? "接入电源" : "未接入电源"} />
         <MetricCard icon={Clock3} label="最后同步" value={formatDateTimeZh(state.device.lastSyncAtMillis)} detail={state.device.timezone} />
-        <MetricCard icon={MonitorSmartphone} label="App 版本" value={state.device.appVersion} detail="由 Android App 上报" />
+        <MetricCard icon={MonitorSmartphone} label="App 版本" value={state.device.appVersion} detail="当前安装版本" />
       </div>
 
       <section className="band">
         <div className="section-head">
           <div>
             <h2>权限状态</h2>
-            <p>由 Android App 最近一次轮询上报。</p>
+            <p>最近一次同步状态。</p>
           </div>
         </div>
         <div className="permission-grid">

@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Auto Launcher 控制台",
-  description: "Auto Launcher remote control console prototype",
+  description: "Auto Launcher 远程控制台",
   icons: {
     icon: "/icon.svg",
   },

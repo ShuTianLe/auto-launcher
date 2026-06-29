@@ -14,8 +14,8 @@ android {
         applicationId = "com.stl.autolauncher"
         minSdk = 29
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.2.0"
+        versionCode = 10
+        versionName = "1.2.1"
         buildConfigField("String", "REMOTE_BASE_URL", "\"https://auto-launcher.19930630.xyz\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

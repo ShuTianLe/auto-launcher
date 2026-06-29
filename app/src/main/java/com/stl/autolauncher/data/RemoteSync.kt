@@ -1,6 +1,8 @@
 package com.stl.autolauncher.data
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.util.Base64
@@ -13,10 +15,10 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.security.SecureRandom
 import javax.net.ssl.SSLException
+import kotlin.math.roundToInt
 
 data class RemoteDeviceInfo(
     val deviceCode: String,
@@ -35,6 +37,11 @@ data class RemoteCommand(
     val id: String,
     val type: String,
     val payload: JSONObject,
+)
+
+internal data class RemoteBatteryState(
+    val batteryPercent: Int,
+    val charging: Boolean,
 )
 
 class RemoteDeviceStore(context: Context) {
@@ -194,19 +201,35 @@ class RemoteSyncRepository(
     }
 
     private suspend fun deviceJson(): JSONObject {
-        val battery = context.getSystemService(BatteryManager::class.java)
-        val batteryPercent = battery?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it >= 0 } ?: 0
+        val batteryState = batteryState()
         return JSONObject()
             .put("deviceCode", store.deviceCode)
             .put("displayName", Build.MODEL?.takeIf { it.isNotBlank() } ?: "Auto Launcher 设备")
             .put("online", true)
-            .put("charging", false)
-            .put("batteryPercent", batteryPercent)
+            .put("charging", batteryState.charging)
+            .put("batteryPercent", batteryState.batteryPercent)
             .put("appVersion", BuildConfig.VERSION_NAME)
             .put("lastSyncAtMillis", System.currentTimeMillis())
             .put("timezone", java.util.TimeZone.getDefault().id)
             .put("permissions", permissionsJson(permissionInspector.snapshot()))
             .put("installedApps", JSONArray(installedAppRepository.getLaunchableApps().map(::installedAppJson)))
+    }
+
+    private fun batteryState(): RemoteBatteryState {
+        val batteryManager = context.getSystemService(BatteryManager::class.java)
+        val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val managerPercent = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        return RemoteBatteryState(
+            batteryPercent = resolveRemoteBatteryPercent(
+                managerPercent = managerPercent,
+                level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1,
+                scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1,
+            ),
+            charging = resolveRemoteChargingState(
+                status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1,
+                plugged = batteryIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0,
+            ),
+        )
     }
 
     private suspend fun taskJson(task: TaskEntity): JSONObject {
@@ -314,3 +337,17 @@ private data class RemoteHttpResponse(
     val message: String,
     val json: JSONObject? = null,
 )
+
+internal fun resolveRemoteChargingState(status: Int, plugged: Int): Boolean {
+    return status == BatteryManager.BATTERY_STATUS_CHARGING ||
+        status == BatteryManager.BATTERY_STATUS_FULL ||
+        plugged > 0
+}
+
+internal fun resolveRemoteBatteryPercent(managerPercent: Int, level: Int, scale: Int): Int {
+    if (managerPercent in 0..100) return managerPercent
+    if (level >= 0 && scale > 0) {
+        return ((level.toFloat() / scale.toFloat()) * 100).roundToInt().coerceIn(0, 100)
+    }
+    return 0
+}

@@ -1474,7 +1474,7 @@ private fun PermissionsScreen(
                 item {
                     SectionCard(
                         title = "远程控制台",
-                        subtitle = "App 本地数据是任务真源；Web 控制台通过这个设备码查看状态和下发命令。",
+                        subtitle = "设备码用于网页登录和同步。",
                     ) {
                         TaskMetaRow(icon = Icons.Default.PhoneAndroid, label = "设备码", value = remoteInfo.deviceCode)
                         TaskMetaRow(

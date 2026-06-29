@@ -3,28 +3,37 @@
 import { FormEvent, useState } from "react";
 import { LockKeyhole, Loader2, ShieldCheck } from "lucide-react";
 
+const rememberedDeviceCodeStorageKey = "autoLauncher:lastDeviceCode";
+
 export function LoginForm() {
-  const [deviceCode, setDeviceCode] = useState("");
+  const [deviceCode, setDeviceCode] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(rememberedDeviceCodeStorageKey) ?? "";
+  });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalizedDeviceCode = normalizeDeviceCodeInput(deviceCode);
+    if (!normalizedDeviceCode) return;
+
     setError("");
     setSubmitting(true);
 
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ deviceCode }),
-    });
+      body: JSON.stringify({ deviceCode: normalizedDeviceCode }),
+    }).catch(() => null);
 
     setSubmitting(false);
-    if (!response.ok) {
+    if (!response?.ok) {
       setError("设备码不正确，请检查后再试。");
       return;
     }
 
+    window.localStorage.setItem(rememberedDeviceCodeStorageKey, normalizedDeviceCode);
     window.location.href = "/";
   }
 
@@ -56,7 +65,7 @@ export function LoginForm() {
             />
           </div>
           {error ? <p className="form-error">{error}</p> : null}
-          <button className="primary-button full-width" type="submit" disabled={submitting || !deviceCode.trim()}>
+          <button className="primary-button full-width" type="submit" disabled={submitting || !normalizeDeviceCodeInput(deviceCode)}>
             {submitting ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
             进入控制台
           </button>
@@ -66,4 +75,8 @@ export function LoginForm() {
       </section>
     </main>
   );
+}
+
+function normalizeDeviceCodeInput(value: string): string {
+  return value.trim().toUpperCase().replace(/\s+/g, "");
 }

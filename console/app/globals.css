@@ -310,33 +310,6 @@ p {
   gap: 8px;
 }
 
-.prototype-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 16px;
-  border: 1px solid #ead28b;
-  border-radius: var(--radius);
-  background: #fff9e8;
-  color: #5f4500;
-  padding: 11px 12px;
-}
-
-.prototype-banner svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.prototype-banner div {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-
-.prototype-banner span {
-  color: #775a08;
-}
-
 .error-strip {
   margin-bottom: 16px;
   border: 1px solid #efb2b2;
